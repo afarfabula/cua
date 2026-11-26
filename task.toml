@@ -3,7 +3,7 @@ artifacts = ["/workspace/output", "/var/lib/clearing-portal", "/workspace/traces
 
 [task]
 name = "clearing-core/gateway-cascade-audit"
-version = "0.2.0"
+version = "0.3.0"
 description = "金融清结算与风控网关级联故障定位、Gitea热修、动态金丝雀回归验证与多模态SLA合规审计闭环"
 
 [metadata]

@@ -18,7 +18,7 @@
 | R04 | 关闭 Gitea 干扰 PR #1 | 客观 | Gitea API `pulls/1` & comments | `state=="closed"`, `merged==false`, 评论含 `180`/连接数 | 0.07 |
 | R05 | Gitea 修复合入 `main` | 客观 | `risk-engine` `main` HEAD & `config.py` | HEAD 更新且 `DB_POOL_SIZE <= 180` | 0.08 |
 | R06 | 独立回归测试全过 | 客观 | 克隆 `main` 跑并发/幂等/503/原单测 | 4 项全通过 | 0.08 |
-| R07 | CMDB 拓扑隔离与保护 | 客观 | `cmdb_nodes` 表 | `risk-node-02/03` 隔离且其余 4 节点 `ACTIVE` | 0.07 |
+| R07 | CMDB 拓扑隔离与保护 | 客观 | `cmdb_nodes`、`cmdb_node_status_events`、受保护的初始 Portal DB 快照 | 一半按目标节点实际隔离逐个给分。至少隔离一个目标后，另一半要求四个非目标节点与初始快照一致且无状态变更事件，误改后恢复也扣除保护分。 | 0.07 |
 | R08 | 变更排期避开冻结窗 | 客观 | `change_tickets` 表 | 匹配 SHA/Span 且不重叠 `17:30–19:30` | 0.07 |
 | R15 | 灰度回放通过并签发 | 客观 | `change_tickets:canary_status, status` | `CANARY_PASSED` 且 `APPROVED` | 0.08 |
 | R09 | 本地对账与重复风险识别 | 客观 | `reconciliation_summary.csv` & JSON | 4 批次无 `TEST_` 且匹配全部重复风险 `tx_id` | 0.07 |

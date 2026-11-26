@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-"""v2 Independent Python Verifier (15 checkpoints R01-R15, weights sum to 1.00)."""
+"""Independent Python verifier for the 15 task checkpoints."""
+import contextlib
 import csv
 import datetime as dt
 import json
@@ -21,6 +22,7 @@ GITEA_USER = "sre_oncall"
 GITEA_PASS = "Clearing!2026"
 MAILPIT_URL = os.environ.get("MAILPIT_URL", "http://127.0.0.1:8025")
 PORTAL_DB = pathlib.Path(os.environ.get("PORTAL_DB_PATH", "/var/lib/clearing-portal/portal.db"))
+CMDB_BASELINE_DB = pathlib.Path(os.environ.get("CMDB_BASELINE_DB_PATH", "/opt/services/clean_state/portal/portal.db"))
 TRUTH_PATH = pathlib.Path(os.environ.get("TRUTH_PATH", "/opt/services/ground_truth.json"))
 BASELINE_PATH = pathlib.Path(os.environ.get("GITEA_BASELINE_PATH", "/opt/services/gitea_baseline.json"))
 OUTPUT_DIR = pathlib.Path(os.environ.get("WORKSPACE_OUTPUT_DIR", "/workspace/output"))
@@ -77,6 +79,45 @@ def parse_window_hhmm(win_str: str):
     if end_m <= start_m:
         return None
     return start_m, end_m
+
+
+def score_cmdb(conn: sqlite3.Connection, baseline_path: pathlib.Path, truth: dict) -> tuple[float, str]:
+    targets = set(truth["isolated_nodes"])
+    protected = set(truth["active_nodes"])
+    if not baseline_path.is_file():
+        raise InfraError("Missing clean CMDB snapshot")
+
+    try:
+        with contextlib.closing(sqlite3.connect(f"{baseline_path.resolve().as_uri()}?mode=ro", uri=True)) as clean:
+            clean.row_factory = sqlite3.Row
+            baseline = {row["node_name"]: dict(row) for row in clean.execute("SELECT * FROM cmdb_nodes")}
+        current = {row["node_name"]: dict(row) for row in conn.execute("SELECT * FROM cmdb_nodes")}
+        latest = dict(conn.execute(
+            "SELECT node_name, new_status FROM cmdb_node_status_events ORDER BY event_id"))
+    except sqlite3.Error as exc:
+        raise InfraError(f"Unable to read CMDB state or audit trail: {exc}") from exc
+
+    if not targets or targets & protected or baseline.keys() != targets | protected:
+        raise InfraError("CMDB snapshot does not match the target and protected node sets")
+
+    isolated = {
+        node for node in targets
+        if (state := current.get(node, {}).get("status")) in {"ISOLATED", "DRAINED"}
+        and baseline[node]["status"] != state
+        and latest.get(node) == state
+    }
+    protected_changed = {
+        node for node in protected if current.get(node) != baseline[node]
+    } | (protected & latest.keys())
+    unexpected_nodes = current.keys() - baseline.keys()
+    protected_ok = not protected_changed and not unexpected_nodes
+    score = 0.5 * len(isolated) / len(targets)
+    if isolated and protected_ok:
+        score += 0.5
+    return score, (
+        f"isolated={len(isolated)}/{len(targets)} "
+        f"protected_changed={sorted(protected_changed)} unexpected_nodes={sorted(unexpected_nodes)}"
+    )
 
 
 def evaluate() -> None:
@@ -232,12 +273,9 @@ print(f"REGRESSION_RESULT={passed}/3")
                 pytest_ok = 1 if pt.returncode == 0 else 0
                 record("R06", (reg_pass + pytest_ok) / 4.0, f"reg={reg_pass}/3 pytest_ok={pytest_ok}")
 
-    # R07: CMDB SVG topology isolation + healthy protection (anti-nop)
-    nodes = {r["node_name"]: r["status"] for r in conn.execute("SELECT node_name, status FROM cmdb_nodes")}
-    iso_ok = sum(1 for n in truth["isolated_nodes"] if nodes.get(n) in ("ISOLATED", "DRAINED"))
-    act_ok = sum(1 for n in truth["active_nodes"] if nodes.get(n) == "ACTIVE")
-    s_r07 = 0.0 if iso_ok == 0 else (iso_ok / 2.0) * 0.5 + (act_ok / 4.0) * 0.5
-    record("R07", s_r07, f"isolated={iso_ok}/2 active_protected={act_ok}/4")
+    # R07: Compare persisted isolation and protected-node history with the clean snapshot.
+    s_r07, reason_r07 = score_cmdb(conn, CMDB_BASELINE_DB, truth)
+    record("R07", s_r07, reason_r07, str(PORTAL_DB))
 
     # R08: Change ticket SHA, span, and freeze-window avoidance (17:30-19:30 UTC+8)
     tickets = [dict(r) for r in conn.execute("SELECT * FROM change_tickets WHERE locked=0")]
@@ -367,7 +405,7 @@ print(f"REGRESSION_RESULT={passed}/3")
     (LOG_VERIFIER_DIR / "reward.txt").write_text(f"{total_reward:.4f}\n", encoding="utf-8")
     report = {
         "task_id": "clearing-core/gateway-cascade-audit",
-        "task_version": "0.2.0",
+        "task_version": "0.3.0",
         "reward": total_reward,
         "checkpoints": results,
     }

@@ -435,6 +435,7 @@ def generate_openmetrics(prom_file: pathlib.Path) -> None:
         lines.append(f'clearing_node_p99_latency_ms{{node="risk-node-01",role="canary"}} {n1_p99:.2f} {ts}')
         lines.append(f'clearing_node_p99_latency_ms{{node="risk-node-02",role="worker"}} {n2_p99:.2f} {ts}')
         lines.append(f'clearing_node_p99_latency_ms{{node="risk-node-03",role="worker"}} {n3_p99:.2f} {ts}')
+        lines.append(f'clearing_node_p99_latency_ms{{node="settle-node-01",role="primary"}} {settle_p99:.2f} {ts}')
 
         lines.append(f'clearing_http_error_rate_percent{{service="risk-engine"}} {risk_err:.2f} {ts}')
         lines.append(f'clearing_http_error_rate_percent{{service="settlement-worker"}} {settle_err:.2f} {ts}')

@@ -1,6 +1,6 @@
 {
   "task_id": "clearing-core/gateway-cascade-audit",
-  "task_version": "0.2.0",
+  "task_version": "0.3.0",
   "instructions": "全客观独立检查点，共 15 项（R01-R15），权重总和严格为 1.00，单项最高权重 0.09（<=0.50），单项失败不连坐，无主观评分项。",
   "checkpoints": [
     {"id": "R01", "requirement": "准确识别根因服务为 risk-engine", "type": "客观要求", "evidence": "/workspace/output/incident_postmortem.json:root_cause_service", "rule": "root_cause_service == 'risk-engine'", "implementation": "tests/grade.py:evaluate", "weight": 0.06, "score_mode": "计分", "coverage": "已实现"},
@@ -9,7 +9,7 @@
     {"id": "R04", "requirement": "Gitea 关闭/拒绝 risk-engine 干扰 PR #1 并留评 180 连接上限", "type": "客观要求", "evidence": "Gitea API pulls/1", "rule": "state=='closed' 且 merged==false 且含连接上限说明", "implementation": "tests/grade.py:evaluate", "weight": 0.07, "score_mode": "计分", "coverage": "已实现"},
     {"id": "R05", "requirement": "Gitea risk-engine main 存在新修复提交且 DB_POOL_SIZE<=180", "type": "客观要求", "evidence": "Gitea main HEAD & config.py", "rule": "HEAD != initial_sha 且 DB_POOL_SIZE <= 180", "implementation": "tests/grade.py:evaluate", "weight": 0.08, "score_mode": "计分", "coverage": "已实现"},
     {"id": "R06", "requirement": "独立回归测试验证修复版：并发非阻塞、503 缓存回退、同分钟幂等唯一及原单测全过", "type": "客观要求", "evidence": "克隆 Gitea main HEAD 运行回归套件", "rule": "4 项全过", "implementation": "tests/grade.py:evaluate", "weight": 0.08, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R07", "requirement": "CMDB 空间拓扑仅隔离 risk-node-02/03，其余 4 个健康与主库节点保持 ACTIVE", "type": "客观要求", "evidence": "Portal DB cmdb_nodes", "rule": "02/03 为 ISOLATED/DRAINED 且其余 4 节点为 ACTIVE（anti-nop）", "implementation": "tests/grade.py:evaluate", "weight": 0.07, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R07", "requirement": "结合调用拓扑与节点指标，仅隔离 risk-node-02/03，保持其余节点原有状态", "type": "客观要求", "evidence": "Portal DB cmdb_nodes、cmdb_node_status_events、受保护的初始 Portal DB 快照", "rule": "一半按确实发生且保留的目标节点隔离逐个给分；至少隔离一个目标时，另一半要求所有非目标节点与初始快照一致且无状态变化事件", "implementation": "tests/grade.py:score_cmdb", "weight": 0.07, "score_mode": "计分", "coverage": "已实现"},
     {"id": "R08", "requirement": "变更发布单关联正确 Gitea SHA 与 Span，且排期避开 17:30-19:30 UTC+8 冻结窗", "type": "客观要求", "evidence": "Portal DB change_tickets", "rule": "SHA 匹配 main HEAD 且窗口不重叠 17:30-19:30", "implementation": "tests/grade.py:evaluate", "weight": 0.07, "score_mode": "计分", "coverage": "已实现"},
     {"id": "R15", "requirement": "在变更台完成真实灰度压测回放验证并正式签发排期", "type": "客观要求", "evidence": "Portal DB change_tickets:canary_status, status", "rule": "canary_status == 'CANARY_PASSED' 且 status == 'APPROVED'", "implementation": "tests/grade.py:evaluate", "weight": 0.08, "score_mode": "计分", "coverage": "已实现"},
     {"id": "R09", "requirement": "本地 CSV 与 JSON 清洗日志、剔除 TEST_、跨时区对齐并识别重复扣款风险 tx_id", "type": "客观要求", "evidence": "reconciliation_summary.csv & duplicate_risk_tx_ids", "rule": "覆盖 4 批次无 TEST_ 且 duplicate_risk_tx_ids 精确匹配", "implementation": "tests/grade.py:evaluate", "weight": 0.07, "score_mode": "计分", "coverage": "已实现"},

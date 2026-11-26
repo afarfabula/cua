@@ -16,3 +16,7 @@
 - `/workspace/history/postmortem_20261018.md`：2026-10-18 历史故障复盘与节点操作红线
 - `/workspace/data/gateway_requests.jsonl` & `settlement_batches_raw.csv`：昨日网关流水与结算批次明细
 - `/workspace/traces/clearing_incident.pftrace`：故障时段二进制 Perfetto Trace（可直接在 `http://127.0.0.1:9001` 打开或通过 `http://127.0.0.1:9001/traces/clearing_incident.pftrace` 下载查看）
+
+## CMDB 节点核对
+
+拓扑实线箭头表示请求从调用方发往被调用方，虚线表示预留路径。告警来自故障时段的观测延迟，节点运行状态单独显示。对照 Grafana 的 **Per-Node P99 Latency** 曲线判断异常先后，再在拓扑中选择节点执行隔离。操作后查看 CMDB 下方的 **节点状态核对**，确认非目标节点的运行状态及状态变更次数。
