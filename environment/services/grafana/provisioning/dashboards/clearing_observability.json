@@ -4,7 +4,7 @@
   "tags": ["clearing", "sre", "incident", "canary"],
   "timezone": "Asia/Shanghai",
   "schemaVersion": 39,
-  "version": 2,
+  "version": 3,
   "time": {
     "from": "2026-11-24T04:00:00.000Z",
     "to": "2026-11-24T10:00:00.000Z"
@@ -23,7 +23,7 @@
     {
       "id": 2,
       "type": "timeseries",
-      "title": "Per-Node P99 Latency (risk-engine canary vs workers)",
+      "title": "Per-Node P99 Latency",
       "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
       "datasource": {"type": "prometheus", "uid": "prometheus-clearing"},
       "targets": [

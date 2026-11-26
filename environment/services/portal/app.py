@@ -58,6 +58,19 @@ def init_db(reset: bool = False) -> None:
             p99_ms INTEGER NOT NULL,
             queue_depth INTEGER NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS cmdb_node_status_events (
+            event_id INTEGER PRIMARY KEY,
+            node_name TEXT NOT NULL,
+            previous_status TEXT NOT NULL,
+            new_status TEXT NOT NULL
+        );
+        CREATE TRIGGER IF NOT EXISTS cmdb_record_status_change
+        AFTER UPDATE OF status ON cmdb_nodes
+        WHEN OLD.status <> NEW.status
+        BEGIN
+            INSERT INTO cmdb_node_status_events (node_name, previous_status, new_status)
+            VALUES (NEW.node_name, OLD.status, NEW.status);
+        END;
         CREATE TABLE IF NOT EXISTS change_tickets (
             ticket_id TEXT PRIMARY KEY,
             service TEXT NOT NULL,
@@ -100,9 +113,9 @@ def init_db(reset: bool = False) -> None:
     if cur.execute("SELECT COUNT(*) FROM cmdb_nodes").fetchone()[0] == 0:
         nodes = [
             ("risk-node-01", "risk-engine", "zone-a", "canary", "ACTIVE", 86, 2),
-            ("risk-node-02", "risk-engine", "zone-b", "worker", "DEGRADED", 1540, 44),
-            ("risk-node-03", "risk-engine", "zone-b", "worker", "DEGRADED", 1495, 39),
-            ("settle-node-01", "settlement-worker", "zone-a", "primary", "ACTIVE", 920, 18),
+            ("risk-node-02", "risk-engine", "zone-b", "worker", "ACTIVE", 1540, 44),
+            ("risk-node-03", "risk-engine", "zone-b", "worker", "ACTIVE", 1495, 39),
+            ("settle-node-01", "settlement-worker", "zone-a", "primary", "ACTIVE", 1620, 43),
             ("settle-node-02", "settlement-worker", "zone-b", "standby", "ACTIVE", 145, 3),
             ("pg-primary-01", "postgres", "core-db", "primary_db", "ACTIVE", 210, 168),
         ]
@@ -337,7 +350,13 @@ print(json.dumps({"hkd_max_ms": round(hkd_max, 2), "errors": errors, "collisions
 @app.get("/api/nodes")
 def list_nodes(_: str = Depends(require_read)):
     conn = get_conn()
-    rows = [dict(r) for r in conn.execute("SELECT * FROM cmdb_nodes ORDER BY node_name")]
+    rows = [dict(r) for r in conn.execute("""
+        SELECT n.*, COUNT(e.event_id) AS status_change_count
+        FROM cmdb_nodes AS n
+        LEFT JOIN cmdb_node_status_events AS e ON e.node_name = n.node_name
+        GROUP BY n.node_name
+        ORDER BY n.node_name
+    """)]
     conn.close()
     return {"nodes": rows}
 
@@ -497,6 +516,10 @@ header{{background:#0f172a;color:#fff;padding:14px 24px;display:flex;justify-con
 .panel.active{{display:block}}
 .topo-wrap{{display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start}}
 .inspector{{background:#f8fafc;border:1px solid #cbd5e1;border-radius:8px;padding:16px}}
+.topo-legend{{display:flex;flex-wrap:wrap;gap:14px;color:#475569;font-size:13px;margin:10px 0}}
+.node-g:focus-visible rect,.node-g[aria-pressed="true"] rect{{stroke:#1d4ed8;stroke-width:4}}
+.node-error{{color:#991b1b}}
+@media (max-width:900px){{.topo-wrap{{grid-template-columns:1fr}}}}
 table{{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}}
 th,td{{border:1px solid #e2e8f0;padding:8px;text-align:left}}
 th{{background:#f8fafc}}
@@ -524,29 +547,39 @@ svg text{{user-select:none}}
 </div>
 <div class="container">
   <div id="cmdb" class="panel active">
-    <h3>集群服务空间拓扑（点击节点查看详情并操作）</h3>
+    <h3>故障时段调用拓扑</h3>
+    <p>箭头从调用方指向被调用方。用 Grafana 节点曲线确认告警出现的先后，再选择要隔离的节点。</p>
     <div class="topo-wrap">
-      <svg id="topo-svg" viewBox="0 0 820 420" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc">
-        <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 1 L 10 5 L 0 9 z" fill="#64748b"/></marker></defs>
-        <rect x="20" y="20" width="240" height="380" rx="10" fill="#eef2ff" stroke="#c7d2fe"/>
-        <text x="34" y="44" font-size="13" font-weight="700" fill="#3730a3">ZONE-A (Edge & Canary)</text>
-        <rect x="285" y="20" width="265" height="380" rx="10" fill="#fff7ed" stroke="#fed7aa"/>
-        <text x="299" y="44" font-size="13" font-weight="700" fill="#9a3412">ZONE-B (Compute Pool)</text>
-        <rect x="575" y="20" width="225" height="380" rx="10" fill="#f0fdf4" stroke="#bbf7d0"/>
-        <text x="589" y="44" font-size="13" font-weight="700" fill="#166534">CORE DB ZONE</text>
-        <line x1="210" y1="120" x2="315" y2="120" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
-        <line x1="210" y1="120" x2="315" y2="235" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
-        <line x1="210" y1="260" x2="315" y2="330" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
-        <line x1="495" y1="120" x2="600" y2="195" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
-        <line x1="495" y1="235" x2="600" y2="205" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
-        <line x1="495" y1="330" x2="600" y2="220" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
-        <g id="svg-nodes"></g>
-      </svg>
+      <div>
+        <svg id="topo-svg" viewBox="0 0 866 430" aria-labelledby="topo-title topo-desc" style="width:100%;border:1px solid #cbd5e1;border-radius:8px;background:#f8fafc">
+          <title id="topo-title">清结算请求调用拓扑</title>
+          <desc id="topo-desc">实线是事故期间的请求方向，虚线是预留路径。告警表示观测延迟升高。</desc>
+          <defs><marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M 0 1 L 10 5 L 0 9 z" fill="#475569"/></marker></defs>
+          <rect x="16" y="16" width="224" height="398" rx="10" fill="#eef2ff" stroke="#c7d2fe"/>
+          <text x="34" y="45" font-size="16" font-weight="700" fill="#3730a3">结算调度</text>
+          <rect x="314" y="16" width="236" height="398" rx="10" fill="#fff7ed" stroke="#fed7aa"/>
+          <text x="331" y="45" font-size="16" font-weight="700" fill="#9a3412">风控计算</text>
+          <rect x="624" y="16" width="226" height="398" rx="10" fill="#f0fdf4" stroke="#bbf7d0"/>
+          <text x="641" y="45" font-size="16" font-weight="700" fill="#166534">核心数据</text>
+          <g fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arr)">
+            <path d="M 212 172 H 266 V 126 H 339"/>
+            <path d="M 212 183 H 280 V 243 H 339"/>
+            <path d="M 518 126 H 585 V 202 H 648"/>
+            <path d="M 518 243 H 585 V 217 H 648"/>
+            <path d="M 212 195 H 257 V 355 H 339" stroke-dasharray="7 4"/>
+          </g>
+          <g id="svg-nodes"></g>
+        </svg>
+        <div class="topo-legend"><span>实线箭头 · 事故流量</span><span>虚线箭头 · 预留路径</span><span>告警 · 观测延迟升高</span></div>
+      </div>
       <div class="inspector" id="node-inspector">
         <h4>节点操作面板</h4>
-        <p style="color:#64748b;font-size:13px">请在左侧拓扑图点击任意节点查看实时 P99 与队列状态。</p>
+        <p style="color:#64748b;font-size:13px">选择节点查看运行状态和故障时段的观测值。</p>
       </div>
     </div>
+    <p id="node-feedback" role="status"></p>
+    <h4>节点状态核对</h4>
+    <table id="node-audit"><thead><tr><th>节点</th><th>运行状态</th><th>状态变更次数</th></tr></thead><tbody></tbody></table>
   </div>
   <div id="changes" class="panel">
     <h3>变更发布单与 Gitea 灰度压测回放门禁</h3>
@@ -570,12 +603,12 @@ svg text{{user-select:none}}
 <script>
 const CSRF = "{csrf_tok}";
 const POS = {{
-  "risk-node-01": [50, 80],
-  "settle-node-01": [50, 220],
-  "risk-node-02": [320, 80],
-  "risk-node-03": [320, 195],
-  "settle-node-02": [320, 300],
-  "pg-primary-01": [605, 165]
+  "settle-node-01": [36, 145],
+  "settle-node-02": [36, 304],
+  "risk-node-02": [342, 90],
+  "risk-node-03": [342, 207],
+  "risk-node-01": [342, 319],
+  "pg-primary-01": [651, 173]
 }};
 let nodesCache = [], selectedNode = null;
 function showTab(id, btn){{
@@ -584,51 +617,78 @@ function showTab(id, btn){{
   document.getElementById(id).classList.add('active');
   btn.classList.add('active');
 }}
-function nodeColors(r){{
-  if(r.status==='ISOLATED'||r.status==='DRAINED') return ['#fef3c7','#d97706'];
-  if(r.status==='DEGRADED'||r.p99_ms>=1200) return ['#fee2e2','#dc2626'];
-  if(r.p99_ms>=200) return ['#ffedd5','#ea580c'];
-  return ['#dcfce7','#16a34a'];
+function nodeAppearance(r){{
+  if(r.status==='ISOLATED'||r.status==='DRAINED') return ['#fef3c7','#92400e',r.status];
+  if(r.status==='DEGRADED'||r.p99_ms>=1200) return ['#fee2e2','#991b1b','告警'];
+  return ['#dcfce7','#166534','正常'];
 }}
 function renderSvg(){{
   const g = document.getElementById('svg-nodes');
-  g.innerHTML = nodesCache.map(r=>{{
-    const [x,y] = POS[r.node_name] || [40,40];
-    const [bg,bd] = nodeColors(r);
-    return `<g class="node-g" onclick="selectNode('${{r.node_name}}')">
-      <rect x="${{x}}" y="${{y}}" width="175" height="72" rx="8" fill="${{bg}}" stroke="${{bd}}" stroke-width="2.5"/>
+  g.innerHTML = nodesCache.filter(r => Object.hasOwn(POS, r.node_name)).map(r=>{{
+    const [x,y] = POS[r.node_name];
+    const [bg,bd,label] = nodeAppearance(r);
+    return `<g class="node-g" role="button" tabindex="0" data-node="${{r.node_name}}"
+      aria-label="${{r.node_name}}，${{label}}，P99 ${{r.p99_ms}} 毫秒" aria-pressed="${{r.node_name===selectedNode}}">
+      <rect x="${{x}}" y="${{y}}" width="176" height="72" rx="8" fill="${{bg}}" stroke="${{bd}}" stroke-width="2.5"/>
       <text x="${{x+10}}" y="${{y+22}}" font-size="13" font-weight="700" fill="#0f172a">${{r.node_name}}</text>
       <text x="${{x+10}}" y="${{y+41}}" font-size="11" fill="#334155">${{r.service}} [${{r.role}}]</text>
-      <text x="${{x+10}}" y="${{y+59}}" font-size="11" font-weight="600" fill="${{bd}}">${{r.status}} | P99:${{r.p99_ms}}ms | Q:${{r.queue_depth}}</text>
+      <text x="${{x+10}}" y="${{y+59}}" font-size="11" font-weight="600" fill="${{bd}}">${{label}} · P99 ${{r.p99_ms}} ms</text>
     </g>`;
   }}).join('');
 }}
+const topoNodes = document.getElementById('svg-nodes');
+topoNodes.addEventListener('click', event => {{
+  const node = event.target.closest('[data-node]');
+  if (node) selectNode(node.dataset.node);
+}});
+topoNodes.addEventListener('keydown', event => {{
+  if (event.key !== 'Enter' && event.key !== ' ') return;
+  const node = event.target.closest('[data-node]');
+  if (node) {{
+    event.preventDefault();
+    selectNode(node.dataset.node);
+  }}
+}});
 function selectNode(name){{
   selectedNode = name;
   const r = nodesCache.find(x=>x.node_name===name);
   if(!r) return;
+  for (const node of topoNodes.querySelectorAll('[data-node]')) {{
+    node.setAttribute('aria-pressed', String(node.dataset.node===name));
+  }}
   document.getElementById('node-inspector').innerHTML = `
     <h4>${{r.node_name}}</h4>
     <div style="font-size:13px;line-height:1.8">
       <div>服务：<b>${{r.service}}</b> (${{r.role}})</div>
       <div>区域：${{r.zone}}</div>
-      <div>当前状态：<span class="badge ${{r.status}}">${{r.status}}</span></div>
-      <div>观测 P99：${{r.p99_ms}} ms | 队列/连接：${{r.queue_depth}}</div>
+      <div>运行状态：<span class="badge ${{r.status}}">${{r.status}}</span></div>
+      <div>故障时段 P99：${{r.p99_ms}} ms · 队列/连接：${{r.queue_depth}}</div>
     </div>
     <div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">
-      <button class="warn" onclick="setNode('${{r.node_name}}','ISOLATED')">隔离 (ISOLATE)</button>
-      <button class="ok" onclick="setNode('${{r.node_name}}','ACTIVE')">恢复 (ACTIVE)</button>
+      <button class="warn" ${{r.status==='ISOLATED'?'disabled':''}} onclick="setNode('${{r.node_name}}','ISOLATED')">隔离 (ISOLATE)</button>
+      <button class="ok" ${{r.status==='ACTIVE'?'disabled':''}} onclick="setNode('${{r.node_name}}','ACTIVE')">恢复 (ACTIVE)</button>
     </div>`;
 }}
 async function setNode(name, status){{
-  await fetch('/api/nodes/'+name, {{method:'PUT',headers:{{'Content-Type':'application/json','X-CSRF-Token':CSRF}},body:JSON.stringify({{status}})}});
-  await loadAll();
-  selectNode(name);
+  const feedback = document.getElementById('node-feedback');
+  try {{
+    const response = await fetch('/api/nodes/'+encodeURIComponent(name), {{method:'PUT',headers:{{'Content-Type':'application/json','X-CSRF-Token':CSRF}},body:JSON.stringify({{status}})}});
+    if (!response.ok) throw new Error(`HTTP ${{response.status}}`);
+    await loadAll();
+    feedback.classList.remove('node-error');
+    feedback.textContent = `${{name}} 的运行状态已更新为 ${{status}}。`;
+  }} catch (error) {{
+    feedback.classList.add('node-error');
+    feedback.textContent = `无法确认 ${{name}} 的状态更新：${{error.message}}`;
+  }}
 }}
 async function loadAll(){{
   const n = await (await fetch('/api/nodes')).json();
   nodesCache = n.nodes;
   renderSvg();
+  document.querySelector('#node-audit tbody').innerHTML = nodesCache.map(r => `<tr>
+    <td>${{r.node_name}}</td><td><span class="badge ${{r.status}}">${{r.status}}</span></td>
+    <td>${{r.status_change_count}}</td></tr>`).join('');
   if(selectedNode) selectNode(selectedNode);
 
   const c = await (await fetch('/api/changes')).json();
