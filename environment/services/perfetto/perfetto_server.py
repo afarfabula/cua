@@ -38,6 +38,6 @@ class ReusableTCPServer(socketserver.ThreadingMixIn, http.server.HTTPServer):
 
 if __name__ == "__main__":
     port = int(os.environ.get("PERFETTO_PORT", "9001"))
-    srv = ReusableTCPServer(("0.0.0.0", port), PerfettoHandler)
-    print(f"Serving Perfetto UI on 0.0.0.0:{port}")
+    srv = ReusableTCPServer(("127.0.0.1", port), PerfettoHandler)
+    print(f"Serving Perfetto UI on 127.0.0.1:{port}")
     srv.serve_forever()

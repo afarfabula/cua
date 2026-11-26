@@ -22,15 +22,15 @@ wait_for_http() {
 # If iptables is unavailable (no CAP_NET_ADMIN), Portal also enforces UID checks as fallback.
 setup_iptables() {
   local blocked=0
-  for port in 8080 3000 9090 9001; do
+  for port in 8080 3000 9090 9001 13000 19090 19001; do
     if iptables -A OUTPUT -o lo -p tcp --dport "$port" -m owner --uid-owner agent -j REJECT 2>/dev/null; then
       blocked=$((blocked + 1))
     fi
   done
-  if [ "$blocked" -eq 4 ]; then
-    echo "[entrypoint] iptables: blocked agent from ports 8080/3000/9090/9001"
+  if [ "$blocked" -eq 7 ]; then
+    echo "[entrypoint] iptables: blocked agent from ports 8080/3000/9090/9001/13000/19090/19001"
   else
-    echo "[entrypoint] WARNING: iptables unavailable (blocked $blocked/4), relying on Portal UID middleware"
+    echo "[entrypoint] WARNING: iptables unavailable (blocked $blocked/7), relying on Portal/proxy UID checks"
   fi
 }
 
@@ -43,16 +43,21 @@ if [ ! -f /var/run/clearing_services_booted ]; then
     python3 /opt/services/mailpit_seed.py --seed-dir /opt/services/seed --smtp-host 127.0.0.1 --smtp-port 1025
     touch /var/lib/mailpit/.seeded
   fi
-  # Ensure portal, gitea, grafana, prometheus, perfetto, chromium CDP are up
+  # Critical services must be ready (Portal, Gitea, CDP)
   for url in \
     http://127.0.0.1:8080/health \
     http://127.0.0.1:3001/api/v1/version \
-    http://127.0.0.1:9090/-/ready \
-    http://127.0.0.1:3000/api/health \
-    http://127.0.0.1:9001/ \
     http://127.0.0.1:9222/json/version
   do
     wait_for_http "$url"
+  done
+  # Non-critical services: best-effort (Grafana/Prometheus/Perfetto may be slow)
+  for url in \
+    http://127.0.0.1:19090/-/ready \
+    http://127.0.0.1:13000/api/health \
+    http://127.0.0.1:19001/
+  do
+    wait_for_http "$url" || true
   done
   touch /var/run/clearing_services_booted
 fi

@@ -2,10 +2,9 @@
 """UID-checking TCP proxy for Grafana/Prometheus/Perfetto.
 
 Sits in front of the services on their original ports (3000/9090/9001).
-Blocks connections from the agent terminal (UID 1000) and unknown sources.
-Only allows root (the controlled Chromium browser) to reach the backends.
-
-This is the fallback when iptables is unavailable (no CAP_NET_ADMIN).
+Blocks connections from the agent terminal (UID 1000) and unknown sources
+(fail-closed after 3 retries). Only allows root (the controlled Chromium
+browser) to reach the backends on 13000/19090/19001.
 """
 import asyncio
 import os
@@ -70,13 +69,16 @@ async def handle_client(reader, writer, backend_host, backend_port, listen_port,
         await writer.wait_closed()
         return
     client_port = peer[1]
-    uid = get_client_uid(listen_port, client_port)
-    if uid == AGENT_UID:
-        # Block: agent terminal
+    uid = -1
+    for attempt in range(3):
+        uid = get_client_uid(listen_port, client_port)
+        if uid >= 0:
+            break
+        await asyncio.sleep(0.05)
+    if uid == AGENT_UID or uid < 0:
         writer.close()
         await writer.wait_closed()
         return
-    # Allow: root browser or unknown (fail-open to avoid breaking legitimate access)
     try:
         backend_reader, backend_writer = await asyncio.open_connection(backend_host, backend_port)
     except Exception:
