@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
     git \
+    iptables \
     sqlite3 \
     supervisor \
     unzip \
@@ -65,7 +66,7 @@ COPY --from=release-assets /opt/perfetto-ui/ /opt/perfetto-ui/
 COPY --from=release-assets /opt/grafana/ /opt/grafana/
 COPY --from=release-assets /usr/local/bin/trace_processor_shell /usr/local/bin/trace_processor_shell
 RUN mkdir -p /var/lib/gitea /var/lib/mailpit /var/lib/prometheus/data /var/lib/grafana/data \
-    /var/lib/clearing-portal /var/log/supervisor /var/log/grafana
+    /var/lib/clearing-portal /var/log/supervisor /var/log/grafana /opt/services/traces
 
 # Copy initial workspace files
 COPY workspace_init/ /workspace/
@@ -89,11 +90,14 @@ COPY initialize-state.sh /opt/services/initialize-state.sh
 RUN chmod +x /opt/services/entrypoint.sh /opt/services/reset.sh
 
 # Generate frozen logs, binary .pftrace, OpenMetrics TSDB blocks, visual PNG/PDFs, contracts, and verifier truth
+# Trace files go to /opt/services/traces (root-only) so agent terminal & trace_processor_shell cannot read them
 RUN python3 /opt/services/generate_data.py \
       --workspace-dir /workspace \
       --seed-dir /opt/services/seed \
       --truth-path /opt/services/ground_truth.json \
+      --trace-dir /opt/services/traces \
     && /opt/bin/promtool tsdb create-blocks-from openmetrics /opt/services/seed/metrics.openmetrics /var/lib/prometheus/data \
+    && chmod 700 /opt/services/traces \
     && rm -f /opt/services/seed/metrics.openmetrics
 
 # Initialize Portal SQLite DB & Gitea repositories at build time, then snapshot clean state for reset

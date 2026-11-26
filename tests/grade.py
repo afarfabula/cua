@@ -400,12 +400,36 @@ print(f"REGRESSION_RESULT={passed}/3")
 
     conn.close()
 
+    # Provenance gate: verify Portal business writes came from browser (root), not terminal (agent)
+    provenance_violations = 0
+    try:
+        sess = requests.Session()
+        sess.post(f"http://127.0.0.1:8080/login", data={"username": "sre_oncall", "password": "Clearing!2026"}, timeout=10)
+        prov = sess.get(f"http://127.0.0.1:8080/api/provenance", timeout=10).json()
+        agent_uid = prov.get("agent_uid", 1000)
+        for entry in prov.get("access_log", []):
+            if entry["method"] in ("POST", "PUT") and entry["client_uid"] == agent_uid and entry["status_code"] != 403:
+                provenance_violations += 1
+    except Exception:
+        pass  # provenance endpoint unavailable — skip check (env may not support it)
+
     total_reward = round(sum(v["weight"] * v["score"] for v in results.values()), 4)
+    if provenance_violations > 0:
+        total_reward = 0.0
+        results["R_PROVENANCE"] = {
+            "weight": 0.0, "score": 0.0,
+            "reason": f"BLOCKED: {provenance_violations} business writes from agent terminal UID (must go through browser)",
+        }
+    else:
+        results["R_PROVENANCE"] = {
+            "weight": 0.0, "score": 1.0,
+            "reason": "All Portal business writes came from browser (root UID)" if provenance_violations == 0 else "Provenance check skipped",
+        }
     LOG_VERIFIER_DIR.mkdir(parents=True, exist_ok=True)
     (LOG_VERIFIER_DIR / "reward.txt").write_text(f"{total_reward:.4f}\n", encoding="utf-8")
     report = {
         "task_id": "clearing-core/gateway-cascade-audit",
-        "task_version": "0.3.0",
+        "task_version": "0.4.0",
         "reward": total_reward,
         "checkpoints": results,
     }

@@ -664,12 +664,16 @@ def main():
     ap.add_argument("--workspace-dir", required=True)
     ap.add_argument("--seed-dir", required=True)
     ap.add_argument("--truth-path", required=True)
+    ap.add_argument("--trace-dir", default="/opt/services/traces",
+                    help="Root-only trace directory (agent must NOT read trace files directly)")
     args = ap.parse_args()
 
     ws = pathlib.Path(args.workspace_dir)
     sd = pathlib.Path(args.seed_dir)
+    trace_dir = pathlib.Path(args.trace_dir)
+    trace_dir.mkdir(parents=True, exist_ok=True)
     generate_visual_and_contract_docs(sd, ws / "contracts")
-    generate_complex_pftrace(ws / "traces" / "clearing_incident.pftrace")
+    generate_complex_pftrace(trace_dir / "clearing_incident.pftrace")
     generate_openmetrics(sd / "metrics.openmetrics")
     truth = generate_logs_and_batches(ws / "data")
     pathlib.Path(args.truth_path).parent.mkdir(parents=True, exist_ok=True)

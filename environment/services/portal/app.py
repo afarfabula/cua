@@ -27,12 +27,62 @@ DB_PATH = pathlib.Path(os.environ.get("PORTAL_DB_PATH", "/var/lib/clearing-porta
 GITEA_URL = os.environ.get("GITEA_URL", "http://127.0.0.1:3001")
 GITEA_USER = "sre_oncall"
 GITEA_PASS = "Clearing!2026"
-TRACE_DIR = pathlib.Path(os.environ.get("TRACE_DIR", "/workspace/traces"))
+TRACE_DIR = pathlib.Path(os.environ.get("TRACE_DIR", "/opt/services/traces"))
 AUTH_USER = "sre_oncall"
 AUTH_PASS = "Clearing!2026"
 SESSION_SECRET = os.environ.get("PORTAL_SESSION_SECRET", "clearing-portal-secret-2026-v2")
+AGENT_UID = int(os.environ.get("AGENT_UID", "1000"))
 
 app = FastAPI(title="Clearing CMDB, Canary Gate & SLA Audit Console")
+
+
+def get_peer_uid(request: Request) -> int:
+    """Look up the Unix UID of the process that opened the TCP connection.
+    Returns -1 if it cannot be determined (treat as browser/root — allowed)."""
+    client = request.client
+    if not client or not client.port:
+        return -1
+    remote_port_hex = format(client.port, "04X")
+    local_port_hex = format(int(os.environ.get("PORTAL_PORT", "8080")), "04X")
+    inode = None
+    try:
+        with open("/proc/net/tcp") as f:
+            next(f)
+            for line in f:
+                parts = line.split()
+                if len(parts) < 10:
+                    continue
+                local = parts[1]
+                remote = parts[2]
+                if local.endswith(f":{local_port_hex}") and remote.endswith(f":{remote_port_hex}"):
+                    inode = parts[9]
+                    break
+    except (IOError, OSError):
+        return -1
+    if not inode or inode == "0":
+        return -1
+    socket_marker = f"socket:[{inode}]"
+    try:
+        for entry in pathlib.Path("/proc").iterdir():
+            if not entry.name.isdigit():
+                continue
+            fd_dir = entry / "fd"
+            try:
+                for fd in fd_dir.iterdir():
+                    try:
+                        target = str(fd.readlink())
+                        if socket_marker in target:
+                            status = (entry / "status").read_text()
+                            for line in status.splitlines():
+                                if line.startswith("Uid:"):
+                                    return int(line.split()[1])
+                    except (PermissionError, OSError):
+                        continue
+            except (PermissionError, OSError):
+                continue
+    except (PermissionError, OSError):
+        pass
+    return -1
 
 
 def get_conn() -> sqlite3.Connection:
@@ -108,6 +158,15 @@ def init_db(reset: bool = False) -> None:
             last_pg_conns INTEGER NOT NULL DEFAULT 42,
             last_collisions INTEGER NOT NULL DEFAULT 0
         );
+        CREATE TABLE IF NOT EXISTS api_access_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            ts TEXT NOT NULL DEFAULT (datetime('now')),
+            method TEXT NOT NULL,
+            path TEXT NOT NULL,
+            client_uid INTEGER NOT NULL,
+            client_port INTEGER,
+            status_code INTEGER NOT NULL DEFAULT 0
+        );
         """
     )
     if cur.execute("SELECT COUNT(*) FROM cmdb_nodes").fetchone()[0] == 0:
@@ -177,8 +236,27 @@ def require_read(request: Request) -> str:
     return verify_session(request, require_csrf=False)
 
 
+def log_access(request: Request, uid: int, status_code: int = 0) -> None:
+    try:
+        conn = get_conn()
+        conn.execute(
+            "INSERT INTO api_access_log (method, path, client_uid, client_port, status_code) VALUES (?,?,?,?,?)",
+            (request.method, request.url.path, uid, request.client.port if request.client else 0, status_code),
+        )
+        conn.commit()
+        conn.close()
+    except Exception:
+        pass
+
+
 def require_write(request: Request) -> str:
-    return verify_session(request, require_csrf=True)
+    user = verify_session(request, require_csrf=True)
+    uid = get_peer_uid(request)
+    if uid == AGENT_UID:
+        log_access(request, uid, 403)
+        raise HTTPException(status_code=403, detail="Terminal access blocked: business writes must go through the browser")
+    log_access(request, uid, 200)
+    return user
 
 
 @app.get("/health")
@@ -204,6 +282,17 @@ def prometheus_metrics():
         f"clearing_canary_idem_collisions {r['last_collisions']}",
         "",
     ])
+
+
+@app.get("/api/provenance")
+def provenance(_: str = Depends(require_read)):
+    """Return access log for verifier to check that writes came from browser (root), not terminal (agent)."""
+    conn = get_conn()
+    rows = [dict(r) for r in conn.execute(
+        "SELECT method, path, client_uid, client_port, status_code, ts FROM api_access_log ORDER BY id"
+    )]
+    conn.close()
+    return {"access_log": rows, "agent_uid": AGENT_UID}
 
 
 @app.get("/login", response_class=HTMLResponse)

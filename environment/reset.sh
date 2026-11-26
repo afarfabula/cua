@@ -20,6 +20,10 @@ chmod -R 700 /var/lib/clearing-portal
 
 rm -rf /var/lib/mailpit/*
 
+rm -rf /opt/services/traces/*
+cp -a /opt/services/clean_state/traces/. /opt/services/traces/
+chmod 700 /opt/services/traces
+
 supervisorctl -c /etc/supervisor/conf.d/clearing.conf start mailpit gitea portal
 for _ in $(seq 1 30); do
   if curl -fsS http://127.0.0.1:8025/api/v1/messages >/dev/null 2>&1 \

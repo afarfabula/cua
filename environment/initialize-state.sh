@@ -41,7 +41,8 @@ runuser -u gitea -- python3 /opt/services/gitea_seed.py \
 
 stop_gitea
 install -m 600 "$staging/gitea_baseline.json" /opt/services/gitea_baseline.json
-mkdir -p /opt/services/clean_state/{workspace,gitea,portal}
+mkdir -p /opt/services/clean_state/{workspace,gitea,portal,traces}
 cp -a /workspace/. /opt/services/clean_state/workspace/
 cp -a "$gitea_dir/." /opt/services/clean_state/gitea/
 cp -a /var/lib/clearing-portal/. /opt/services/clean_state/portal/
+cp -a /opt/services/traces/. /opt/services/clean_state/traces/

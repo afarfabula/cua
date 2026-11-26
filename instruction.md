@@ -1,6 +1,6 @@
 昨天（2026-11-24 14:00 至 18:00 UTC+8）跨境清结算与实时风控平台出现大面积超时告警和疑似重复扣款，需要你今天完成故障定责、代码热修上线验证以及昨日受影响批次的监管 SLA 赔付审计签发，并将最终复盘报告与对账文件归档至 `/workspace/output/`、发邮件向值班主管确认。
 
-目前内网相关环境与业务资料都已就绪：本地 `/workspace` 存放着值班交接说明（`README.md`）、制度与合同资料（`docs/`、`contracts/`）、过往故障复盘（`history/`）、网关原始请求日志、待核对结算批次明细以及故障时段采集的二进制 Trace（`traces/clearing_incident.pftrace`）。线上系统可通过本地端口访问：Grafana 监控（`http://127.0.0.1:3000`）、Perfetto 轨迹视图（`http://127.0.0.1:9001`）、Gitea 代码仓（`http://127.0.0.1:3001`，组织 `clearing-core`，账号 `sre_oncall` / `Clearing!2026`）、Mailpit 内部邮箱（`http://127.0.0.1:8025`，发信 SMTP `127.0.0.1:1025`），以及 CMDB 与 SLA 审计控制台（`http://127.0.0.1:8080`，账号 `sre_oncall` / `Clearing!2026`）。
+目前内网相关环境与业务资料都已就绪：本地 `/workspace` 存放着值班交接说明（`README.md`）、制度与合同资料（`docs/`、`contracts/`）、过往故障复盘（`history/`）、网关原始请求日志和待核对结算批次明细。线上系统可通过本地端口访问：Grafana 监控（`http://127.0.0.1:3000`）、Perfetto 轨迹视图（`http://127.0.0.1:9001`，已预载故障 Trace）、Gitea 代码仓（`http://127.0.0.1:3001`，组织 `clearing-core`，账号 `sre_oncall` / `Clearing!2026`）、Mailpit 内部邮箱（`http://127.0.0.1:8025`，发信 SMTP `127.0.0.1:1025`），以及 CMDB 与 SLA 审计控制台（`http://127.0.0.1:8080`，账号 `sre_oncall` / `Clearing!2026`）。
 
 请先结合监控大盘、Trace 泳道和邮箱通告及附件，定位根因服务、故障起始时刻及代码阻塞点。在 Gitea 妥善处置在途 PR，并在主干完成修复和回归测试，其他服务仓库保持原状。
 

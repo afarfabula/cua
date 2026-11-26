@@ -23,7 +23,7 @@ class PerfettoHandler(http.server.SimpleHTTPRequestHandler):
     def translate_path(self, path):
         if path.startswith("/traces/"):
             rel = path[len("/traces/"):].split("?", 1)[0]
-            trace_dir = pathlib.Path(os.environ.get("TRACE_DIR", "/workspace/traces"))
+            trace_dir = pathlib.Path(os.environ.get("TRACE_DIR", "/opt/services/traces"))
             return str((trace_dir / rel).resolve())
         return super().translate_path(path)
 
