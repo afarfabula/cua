@@ -14,7 +14,12 @@ do
 done
 
 test -x /usr/local/bin/trace_processor_shell
-test -s /workspace/traces/clearing_incident.pftrace
+test -s /opt/services/traces/clearing_incident.pftrace
+# agent must NOT be able to read trace files directly
+if su -s /bin/bash agent -c "test -r /opt/services/traces/clearing_incident.pftrace"; then
+  echo "SECURITY_ERROR: agent can read trace file directly" >&2
+  exit 1
+fi
 test -s /workspace/contracts/vip_merchant_framework_2026.pdf
 test -s /opt/services/seed/sla_corridor_matrix.png
 test -s /opt/services/seed/dba_pg_lock_graph.png

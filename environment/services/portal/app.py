@@ -37,24 +37,32 @@ app = FastAPI(title="Clearing CMDB, Canary Gate & SLA Audit Console")
 
 
 def get_peer_uid(request: Request) -> int:
-    """Look up the Unix UID of the process that opened the TCP connection.
-    Returns -1 if it cannot be determined (treat as browser/root — allowed)."""
+    """Look up the Unix UID of the CLIENT process that opened the TCP connection.
+
+    In /proc/net/tcp, each established connection has two entries (one per endpoint).
+    From the Portal server's perspective, local=8080/remote=client_port is the SERVER
+    socket (owned by uvicorn=root). To find the CLIENT's UID we must look up the
+    other endpoint: local=client_port, remote=8080.
+
+    Returns the client UID, or -1 if undetermined (caller should fail-closed).
+    """
     client = request.client
     if not client or not client.port:
         return -1
-    remote_port_hex = format(client.port, "04X")
-    local_port_hex = format(int(os.environ.get("PORTAL_PORT", "8080")), "04X")
+    client_port_hex = format(client.port, "04X")
+    portal_port_hex = format(int(os.environ.get("PORTAL_PORT", "8080")), "04X")
     inode = None
     try:
         with open("/proc/net/tcp") as f:
-            next(f)
+            next(f)  # skip header
             for line in f:
                 parts = line.split()
                 if len(parts) < 10:
                     continue
-                local = parts[1]
-                remote = parts[2]
-                if local.endswith(f":{local_port_hex}") and remote.endswith(f":{remote_port_hex}"):
+                local = parts[1]   # local_address:local_port (client side)
+                remote = parts[2]  # remote_address:remote_port (server side)
+                # Match CLIENT endpoint: local=client_port, remote=portal_port
+                if local.endswith(f":{client_port_hex}") and remote.endswith(f":{portal_port_hex}"):
                     inode = parts[9]
                     break
     except (IOError, OSError):
@@ -252,9 +260,13 @@ def log_access(request: Request, uid: int, status_code: int = 0) -> None:
 def require_write(request: Request) -> str:
     user = verify_session(request, require_csrf=True)
     uid = get_peer_uid(request)
-    if uid == AGENT_UID:
+    # Fail-closed: reject if uid is agent OR if we can't determine the source
+    if uid == AGENT_UID or uid < 0:
         log_access(request, uid, 403)
-        raise HTTPException(status_code=403, detail="Terminal access blocked: business writes must go through the browser")
+        raise HTTPException(
+            status_code=403,
+            detail="Terminal access blocked: business writes must go through the controlled browser (root UID required)"
+        )
     log_access(request, uid, 200)
     return user
 
@@ -350,7 +362,7 @@ def run_gitea_canary_replay(commit_sha: str) -> dict:
     clone_url = f"{parsed.scheme}://{u}:{p}@{parsed.netloc}/clearing-core/risk-engine.git"
 
     with tempfile.TemporaryDirectory() as td:
-        cp = subprocess.run(["git", "clone", "--depth", "10", clone_url, td], capture_output=True, text=True, timeout=20)
+        cp = subprocess.run(["git", "clone", "--depth", "1", clone_url, td], capture_output=True, text=True, timeout=10)
         if cp.returncode != 0:
             return {"passed": False, "p99_ms": 2500.0, "collisions": 5, "pool_size": 180, "summary": f"git clone error: {cp.stderr}"}
         # Checkout requested commit_sha if present on repo
@@ -405,7 +417,7 @@ hkd_max = max(latencies[1:]) if len(latencies) > 1 else 2500.0
 collisions = 6 - len(keys)
 print(json.dumps({"hkd_max_ms": round(hkd_max, 2), "errors": errors, "collisions": collisions}))
 '''
-        rp = subprocess.run([sys.executable, "-c", stress_code], cwd=td, capture_output=True, text=True, timeout=15)
+        rp = subprocess.run([sys.executable, "-c", stress_code], cwd=td, capture_output=True, text=True, timeout=8)
         if rp.returncode != 0:
             res = {"hkd_max_ms": 2400.0, "errors": 6, "collisions": 5}
         else:

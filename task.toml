@@ -24,7 +24,7 @@ user = "agent"
 network_mode = "public"
 build_timeout_sec = 900.0
 cpus = 4
-memory_mb = 4096
+memory_mb = 8192
 storage_mb = 10240
 
 rock_docker_image = "rock-open-registry-vpc.cn-shanghai.cr.aliyuncs.com/instance/webide-label-l3-siriser-browserusepublic:4022-216243-v1"

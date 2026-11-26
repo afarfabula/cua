@@ -79,6 +79,7 @@ COPY services/prometheus/prometheus.yml /etc/prometheus/prometheus.yml
 COPY services/grafana/grafana.ini /etc/grafana/grafana.ini
 COPY services/grafana/provisioning/ /etc/grafana/provisioning/
 COPY services/perfetto/perfetto_server.py /opt/services/perfetto_server.py
+COPY services/uid_proxy.py /opt/services/uid_proxy.py
 COPY seed/pftrace_encoder.py /opt/services/pftrace_encoder.py
 COPY seed/generate_data.py /opt/services/generate_data.py
 COPY seed/gitea_seed.py /opt/services/gitea_seed.py

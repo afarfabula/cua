@@ -402,6 +402,7 @@ print(f"REGRESSION_RESULT={passed}/3")
 
     # Provenance gate: verify Portal business writes came from browser (root), not terminal (agent)
     provenance_violations = 0
+    provenance_ok = False
     try:
         sess = requests.Session()
         sess.post(f"http://127.0.0.1:8080/login", data={"username": "sre_oncall", "password": "Clearing!2026"}, timeout=10)
@@ -410,20 +411,21 @@ print(f"REGRESSION_RESULT={passed}/3")
         for entry in prov.get("access_log", []):
             if entry["method"] in ("POST", "PUT") and entry["client_uid"] == agent_uid and entry["status_code"] != 403:
                 provenance_violations += 1
-    except Exception:
-        pass  # provenance endpoint unavailable — skip check (env may not support it)
-
-    total_reward = round(sum(v["weight"] * v["score"] for v in results.values()), 4)
-    if provenance_violations > 0:
-        total_reward = 0.0
+        provenance_ok = True
+    except Exception as e:
+        # Fail-closed: if provenance check itself fails, we cannot verify browser-only access
         results["R_PROVENANCE"] = {
             "weight": 0.0, "score": 0.0,
-            "reason": f"BLOCKED: {provenance_violations} business writes from agent terminal UID (must go through browser)",
+            "reason": f"BLOCKED: provenance check failed: {e}",
         }
-    else:
+
+    total_reward = round(sum(v["weight"] * v["score"] for v in results.values()), 4)
+    if provenance_violations > 0 or not provenance_ok:
+        total_reward = 0.0
+    if "R_PROVENANCE" not in results:
         results["R_PROVENANCE"] = {
-            "weight": 0.0, "score": 1.0,
-            "reason": "All Portal business writes came from browser (root UID)" if provenance_violations == 0 else "Provenance check skipped",
+            "weight": 0.0, "score": 1.0 if provenance_violations == 0 else 0.0,
+            "reason": f"violations={provenance_violations}" if provenance_ok else "provenance check failed",
         }
     LOG_VERIFIER_DIR.mkdir(parents=True, exist_ok=True)
     (LOG_VERIFIER_DIR / "reward.txt").write_text(f"{total_reward:.4f}\n", encoding="utf-8")
