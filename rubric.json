@@ -1,0 +1,24 @@
+{
+  "task_id": "clearing-core/gateway-cascade-audit",
+  "task_version": "0.2.0",
+  "instructions": "全客观独立检查点，共 15 项（R01-R15），权重总和严格为 1.00，单项最高权重 0.09（<=0.50），单项失败不连坐，无主观评分项。",
+  "checkpoints": [
+    {"id": "R01", "requirement": "准确识别根因服务为 risk-engine", "type": "客观要求", "evidence": "/workspace/output/incident_postmortem.json:root_cause_service", "rule": "root_cause_service == 'risk-engine'", "implementation": "tests/grade.py:evaluate", "weight": 0.06, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R02", "requirement": "准确识别故障起始时间（14:14 UTC+8 ±2min）与版本 v2.8.4", "type": "客观要求", "evidence": "/workspace/output/incident_postmortem.json:onset_time_utc8, culprit_version", "rule": "UTC+8 在 14:12..14:16 内且包含 v2.8.4", "implementation": "tests/grade.py:evaluate", "weight": 0.06, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R03", "requirement": "准确识别 Perfetto 二进制 Trace 瓶颈 Span", "type": "客观要求", "evidence": "/workspace/output/incident_postmortem.json:bottleneck_span", "rule": "指向 acquire_rule_lock / fx_quote_http_retry / _rule_cache_lock", "implementation": "tests/grade.py:evaluate", "weight": 0.06, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R04", "requirement": "Gitea 关闭/拒绝 risk-engine 干扰 PR #1 并留评 180 连接上限", "type": "客观要求", "evidence": "Gitea API pulls/1", "rule": "state=='closed' 且 merged==false 且含连接上限说明", "implementation": "tests/grade.py:evaluate", "weight": 0.07, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R05", "requirement": "Gitea risk-engine main 存在新修复提交且 DB_POOL_SIZE<=180", "type": "客观要求", "evidence": "Gitea main HEAD & config.py", "rule": "HEAD != initial_sha 且 DB_POOL_SIZE <= 180", "implementation": "tests/grade.py:evaluate", "weight": 0.08, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R06", "requirement": "独立回归测试验证修复版：并发非阻塞、503 缓存回退、同分钟幂等唯一及原单测全过", "type": "客观要求", "evidence": "克隆 Gitea main HEAD 运行回归套件", "rule": "4 项全过", "implementation": "tests/grade.py:evaluate", "weight": 0.08, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R07", "requirement": "CMDB 空间拓扑仅隔离 risk-node-02/03，其余 4 个健康与主库节点保持 ACTIVE", "type": "客观要求", "evidence": "Portal DB cmdb_nodes", "rule": "02/03 为 ISOLATED/DRAINED 且其余 4 节点为 ACTIVE（anti-nop）", "implementation": "tests/grade.py:evaluate", "weight": 0.07, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R08", "requirement": "变更发布单关联正确 Gitea SHA 与 Span，且排期避开 17:30-19:30 UTC+8 冻结窗", "type": "客观要求", "evidence": "Portal DB change_tickets", "rule": "SHA 匹配 main HEAD 且窗口不重叠 17:30-19:30", "implementation": "tests/grade.py:evaluate", "weight": 0.07, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R15", "requirement": "在变更台完成真实灰度压测回放验证并正式签发排期", "type": "客观要求", "evidence": "Portal DB change_tickets:canary_status, status", "rule": "canary_status == 'CANARY_PASSED' 且 status == 'APPROVED'", "implementation": "tests/grade.py:evaluate", "weight": 0.08, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R09", "requirement": "本地 CSV 与 JSON 清洗日志、剔除 TEST_、跨时区对齐并识别重复扣款风险 tx_id", "type": "客观要求", "evidence": "reconciliation_summary.csv & duplicate_risk_tx_ids", "rule": "覆盖 4 批次无 TEST_ 且 duplicate_risk_tx_ids 精确匹配", "implementation": "tests/grade.py:evaluate", "weight": 0.07, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R10", "requirement": "SLA 审计台 4 批次按红章勘误+颜色矩阵+合同 Clause 4.2 免责规则精准核算并 AUDITED", "type": "客观要求", "evidence": "Portal DB sla_batches", "rule": "4 批次结算额/违约数/重复风险数/赔付额精准匹配", "implementation": "tests/grade.py:evaluate", "weight": 0.09, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R11", "requirement": "历史 LOCKED 批次与变更单零改动", "type": "客观要求", "evidence": "Portal DB locked=1 行", "rule": "历史记录未变（anti-nop）", "implementation": "tests/grade.py:evaluate", "weight": 0.06, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R12", "requirement": "本地 postmortem JSON 与控制台审计总额跨端一致", "type": "客观要求", "evidence": "postmortem JSON vs Portal DB", "rule": "total_penalty_cny 一致（±0.02）", "implementation": "tests/grade.py:evaluate", "weight": 0.05, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R13", "requirement": "Mailpit 发送给 sre-lead@clearing.local 的复盘邮件含关键证据与赔付总额", "type": "客观要求", "evidence": "Mailpit API", "rule": "含 risk-engine、Commit SHA 前缀与赔付总额", "implementation": "tests/grade.py:evaluate", "weight": 0.05, "score_mode": "计分", "coverage": "已实现"},
+    {"id": "R14", "requirement": "非目标仓库 settlement-worker 与 api-gateway 保持原状", "type": "客观要求", "evidence": "Gitea API", "rule": "main HEAD 与基线一致（anti-nop）", "implementation": "tests/grade.py:evaluate", "weight": 0.05, "score_mode": "计分", "coverage": "已实现"}
+  ],
+  "subjective": [],
+  "subjective_note": "无主观项；全部 15 项均通过客观自动化代码、数据库与动态仿真结果进行校验。"
+}
