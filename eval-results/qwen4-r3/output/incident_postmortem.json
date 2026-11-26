@@ -1,0 +1,82 @@
+{
+  "root_cause_service": "risk-engine",
+  "onset_time_utc8": "2026-11-24T14:14:00+08:00",
+  "culprit_version": "v2.8.4",
+  "bottleneck_span": "acquire_rule_lock",
+  "gitea_fix_commit": "63bf24d79aa7d176a7c4144bed16710d07758dfe",
+  "isolated_nodes": [
+    "risk-node-02",
+    "risk-node-03"
+  ],
+  "scheduled_release_window_utc8": "2026-11-26 19:45-20:15",
+  "total_penalty_cny": 11947.06,
+  "batches": {
+    "BATCH-20261124-01": {
+      "merchant_id": "MCH_VIP_001",
+      "tier": "VIP_T1",
+      "currency": "USD",
+      "settled_amount_cny": 433990.14,
+      "breached_tx_count": 16,
+      "duplicate_risk_count": 2,
+      "penalty_cny": 4656.14,
+      "audit_status": "AUDITED"
+    },
+    "BATCH-20261124-02": {
+      "merchant_id": "MCH_VIP_002",
+      "tier": "VIP_T1",
+      "currency": "CNY",
+      "settled_amount_cny": 479579.58,
+      "breached_tx_count": 33,
+      "duplicate_risk_count": 0,
+      "penalty_cny": 5000.0,
+      "audit_status": "AUDITED"
+    },
+    "BATCH-20261124-03": {
+      "merchant_id": "MCH_STD_010",
+      "tier": "STD",
+      "currency": "HKD",
+      "settled_amount_cny": 128752.64,
+      "breached_tx_count": 12,
+      "duplicate_risk_count": 2,
+      "penalty_cny": 229.68,
+      "audit_status": "AUDITED"
+    },
+    "BATCH-20261124-04": {
+      "merchant_id": "MCH_VIP_003",
+      "tier": "VIP_T1",
+      "currency": "USD",
+      "settled_amount_cny": 241164.49,
+      "breached_tx_count": 11,
+      "duplicate_risk_count": 1,
+      "penalty_cny": 2061.24,
+      "audit_status": "AUDITED"
+    }
+  },
+  "duplicate_risk_tx_ids": [
+    "TX-20261124-0003",
+    "TX-20261124-0012",
+    "TX-20261124-0088",
+    "TX-20261124-0097",
+    "TX-20261124-0126"
+  ],
+  "incident_id": "INC-20261124",
+  "change_ticket": "CHG-20261124-03",
+  "evidence": {
+    "deploy_marker": "Grafana clearing_deploy_event{service=risk-engine,version=v2.8.4} at 2026-11-24 14:10 UTC+8 (CHG-20261124-01, canary bypassed)",
+    "onset": "14:14 UTC+8 risk-engine P99 94->170ms, acquire_rule_lock contention 2.7->48.25ms, error rate 0.1->1.5%; risk-node-02/03 spiked first (191.8/186.5ms)",
+    "cascade": "14:17 settlement-worker/settle-node-01 queueing + pg-primary-01 conns 50->168/180 by 14:23; 14:20 api-gateway 5xx 2%->36% and P99 ->2.7s (504s)",
+    "trace": "Perfetto slice 2980 acquire_rule_lock (_rule_cache_lock) held 18.6s on risk-worker-0 inside RiskEngine::evaluate_tx, children FxClient::refresh_fx_quote(USD_CNY)/fx_quote_http_retry HTTP 503; 41 Mutex::wait spans totaling 318.3s across risk-workers 1-7",
+    "code_bugs": "v2.8.4 get_fx_rate held _rule_cache_lock across blocking FX HTTP retries; generate_idempotency_key dropped tx_id and truncated cycle_time to minute (retry storm + duplicate-debit risk)",
+    "fix": "PR#2 merged to main: lock guards cache only, single-flight per-pair FX refresh outside lock with stale-rate fallback + 5s backoff on 503; idempotency key binds full (tx_id, merchant_id, cycle_time); DB_POOL_SIZE kept 120 <= pg hard limit 180. 10 regression tests pass (fail on v2.8.4 code). PR#1 (pool=300) closed per DBA warning + INC-20261018 red line.",
+    "canary_replay": "CHG-20261124-03 CANARY_PASSED: replay_p99=0.04ms, idem_collisions=0, pool=120/180, errors=0; Grafana clearing_canary_replay_status=1; canary_replay_latest.pftrace max span 12ms, no acquire_rule_lock/Mutex::wait blocking",
+    "node_verdict": "Topology solid arrows settle-node-01 -> risk-node-02/03 -> pg-primary-01 (dashed reserved: settle-node-01 -> risk-node-01). risk-node-02/03 (v2.8.4 workers) alerted first at 14:14 = local fault, isolated. settle-node-01/02, risk-node-01 (canary v2.8.3), pg-primary-01 = propagation victims/healthy, kept ACTIVE with status_change_count=0."
+  },
+  "audit_basis": {
+    "errata": "COMP-ERRATA-20261124-REV2 (effective 2026-11-24 00:00 UTC+8, supersedes sla_policy_v1.md and unsigned Draft v1.5): VIP_T1 600ms/2.5%/cap 5000 CNY per batch; STD 1500ms/0.5% uncapped; FX USD=7.15 HKD=0.92 CNY=1.00; ROUND_HALF_UP; EOD freeze 17:30-19:30 UTC+8",
+    "contract": "FIN-MSA-2026-VIP-088 Clause 3.1 (UTC+8 calendar-day cut-off, Z conversion), Clause 4.2 (MCH_VIP_003 final-ts 00:00:00-00:59:59 UTC+8 exempt from breach/penalty unless dup-risk, still in settled_amount), Clause 5.4 (duplicate-debit reporting)",
+    "cleaning": "228 gateway rows -> excluded 55 TEST_ rows (TEST_INTERNAL_PROBE/TEST_SANDBOX_01/TEST_QA_99); 17 multi-attempt txs deduped to latest timestamp; 6 TX-20261125-NEXTDAY-* excluded (final ts 2026-11-25 00:30-00:35 UTC+8 after Z conversion); 150 batch txs audited",
+    "exemptions_applied": "BATCH-20261124-04: TX-20261124-0121/0122/0123 (final 00:30/00:31/00:32 UTC+8, 672/712/778ms) included in settled_amount_cny, exempt from breach/penalty per Clause 4.2",
+    "cap_applied": "BATCH-20261124-02 raw penalty 8850.58 -> capped 5000.00 CNY",
+    "historical_records": "BATCH-20261122-01, BATCH-20261123-01/02 and CHG-20261123-01, CHG-20261124-01 remain LOCKED and untouched"
+  }
+}

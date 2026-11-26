@@ -27,7 +27,9 @@ cpus = 4
 memory_mb = 4096
 storage_mb = 10240
 
+rock_docker_image = "rock-open-registry-vpc.cn-shanghai.cr.aliyuncs.com/instance/webide-label-l3-siriser-browserusepublic:4022-216243-v1"
+docker_image = "agent-platform-d2-registry-vpc.cn-hongkong.cr.aliyuncs.com/instance/siriser-browserusepublic:v1-4022_216243_instance"
 [verifier]
-timeout_sec = 600.0
+timeout_sec = 1800.0
 user = "root"
 environment_mode = "shared"

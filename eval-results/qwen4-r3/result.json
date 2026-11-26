@@ -1,0 +1,196 @@
+{
+    "id": "e299ff7a-8bb5-4e77-90b4-0c22286efea2",
+    "task_name": "clearing-core/gateway-cascade-audit",
+    "trial_name": "4022_216243_instance__LERVCZC",
+    "trial_uri": "file:///tmp/shared/rollout_result/2026-11-26__06-23-27/4022_216243_instance__LERVCZC",
+    "task_id": {
+        "path": "4022_216243_instance"
+    },
+    "source": null,
+    "task_checksum": "713647a359d2fef6f6a6c31f34e49cd5b5e0aa5fd42fbb820e122389066658cf",
+    "config": {
+        "task": {
+            "path": "4022_216243_instance",
+            "git_url": null,
+            "git_commit_id": null,
+            "name": null,
+            "ref": null,
+            "overwrite": false,
+            "download_dir": null,
+            "source": null
+        },
+        "trial_name": "4022_216243_instance__LERVCZC",
+        "trials_dir": "/tmp/shared/rollout_result/2026-11-26__06-23-27",
+        "install_only": false,
+        "enable_dynamic_instructions": false,
+        "timeout_multiplier": 1.0,
+        "agent_timeout_multiplier": 5.0,
+        "verifier_timeout_multiplier": 5.0,
+        "agent_setup_timeout_multiplier": null,
+        "environment_build_timeout_multiplier": null,
+        "agent": {
+            "name": "claude-code-enterprise",
+            "import_path": null,
+            "model_name": "qwen4-max",
+            "n_concurrent": null,
+            "concurrency_group": null,
+            "skills": [],
+            "override_timeout_sec": 3600.0,
+            "override_setup_timeout_sec": null,
+            "max_timeout_sec": null,
+            "resume_trajectory": false,
+            "load_trajectory": null,
+            "override_network_mode": null,
+            "extra_allowed_hosts": [],
+            "extra_denied_hosts": [],
+            "extra_allowed_ips": [],
+            "extra_allowed_ports": [],
+            "extra_allowed_endpoints": [],
+            "extra_allowed_host_gateway_ports": [],
+            "kwargs": {
+                "max_turns": 400,
+                "version": "2.1.220",
+                "reasoning_effort": "xhigh",
+                "context_1m": true,
+                "bench_type": "gui",
+                "allowed_tools": "computer-use-mcp,playwright",
+                "disallowed_tools": "WebFetch,WebSearch"
+            },
+            "env": {
+                "HARBOR_NPM_REGISTRY_URL": "http://172.17.0.1:14873",
+                "CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS": "1",
+                "CLAUDE_ENABLE_STREAM_WATCHDOG": "0",
+                "API_FORCE_IDLE_TIMEOUT": "0",
+                "CLAUDE_ENABLE_BYTE_WATCHDOG": "0",
+                "CLAUDE_CODE_RETRY_WATCHDOG": "1",
+                "API_TIMEOUT_MS": "3300000",
+                "CLAUDE_STREAM_IDLE_TIMEOUT_MS": "1800000",
+                "DISABLE_GROWTHBOOK": "1",
+                "CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH": "1",
+                "CLAUDE_CODE_DISABLE_BACKGROUND_TASKS": "1",
+                "CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS": "2",
+                "CLAUDE_CODE_AUTO_COMPACT_WINDOW": "1000000",
+                "CLAUDE_CODE_MAX_CONTEXT_TOKENS": "****",
+                "DISABLE_COMPACT": "0",
+                "CLAUDE_CODE_MAX_OUTPUT_TOKENS": "****",
+                "MAX_TOKENS_LIMIT": "****",
+                "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
+                "JUDGE_MODEL": "azure.gpt-5.6-sol-judge",
+                "JUDGE_BASE_URL": "http://172.17.0.1:4000/v1",
+                "JUDGE_API_KEY": "${JUDGE_API_KEY}",
+                "JUDGE_TIMEOUT": "27060",
+                "JUDGE_MAX_RETRIES": "1",
+                "JUDGE_VIA_PROXY": "true",
+                "SCREEN_WIDTH": "1920",
+                "SCREEN_HEIGHT": "1088",
+                "COMPUTER_USE_RES_TIER": "high",
+                "CAPSOLVER_API_KEY": "CAP-****859",
+                "PROXY_USER": "brd-customer-hl_0c4f2698-zone-qwen_test",
+                "PROXY_PASS": "l1bbtxx5z3ih",
+                "BRIGHTDATA_WSS_ENDPOINT": "wss://brd-customer-hl_8bb0d2f9-zone-tongyi888:weaa1ip1xpj0@brd.superproxy.io:9222",
+                "MCP_TOOL_ALLOWLIST": "*",
+                "MCP_PRESS_KEY_ALLOWLIST": "****",
+                "CU_ACTION_ALLOWLIST": "*",
+                "CU_KEY_ALLOWLIST": "****"
+            },
+            "mcp_servers": []
+        },
+        "environment": {
+            "type": "docker",
+            "import_path": null,
+            "force_build": false,
+            "delete": false,
+            "cpu_enforcement_policy": "auto",
+            "memory_enforcement_policy": "auto",
+            "override_cpus": null,
+            "override_memory_mb": null,
+            "override_storage_mb": null,
+            "override_gpus": null,
+            "override_tpu": null,
+            "mounts": [
+                {
+                    "type": "bind",
+                    "source": "/var/lib/dependency",
+                    "target": "/var/lib/dependency",
+                    "read_only": true,
+                    "bind": {
+                        "create_host_path": false
+                    }
+                }
+            ],
+            "extra_docker_compose": [],
+            "env": {},
+            "kwargs": {},
+            "extra_allowed_hosts": []
+        },
+        "pre_bootstrap": {
+            "commands": [],
+            "env": {},
+            "user": null,
+            "cwd": null,
+            "timeout_sec": null,
+            "continue_on_error": null
+        },
+        "verifier": {
+            "override_timeout_sec": null,
+            "max_timeout_sec": null,
+            "env": {
+                "JUDGE_MODEL": "azure.gpt-5.6-sol-judge",
+                "JUDGE_BASE_URL": "http://172.17.0.1:4000/v1",
+                "JUDGE_API_KEY": "${JUDGE_API_KEY}",
+                "JUDGE_TIMEOUT": "27060",
+                "JUDGE_MAX_RETRIES": "1",
+                "JUDGE_VIA_PROXY": "true"
+            },
+            "disable": false
+        },
+        "artifacts": [],
+        "extra_instruction_paths": [],
+        "extra_instructions": [],
+        "job_id": "92998f65-ade6-4ef5-97a4-16374ef8d0e0"
+    },
+    "agent_info": {
+        "name": "claude-code-enterprise",
+        "version": "2.1.220",
+        "model_info": {
+            "name": "qwen4-max",
+            "provider": null
+        }
+    },
+    "agent_result": {
+        "n_input_tokens": 5508561,
+        "n_cache_tokens": 5337574,
+        "n_output_tokens": 56493,
+        "cost_usd": 5.146142000000001,
+        "rollout_details": null,
+        "metadata": {
+            "internal_error_type": null
+        }
+    },
+    "verifier_result": {
+        "rewards": {
+            "reward": 0.959
+        }
+    },
+    "exception_info": null,
+    "started_at": "2026-11-26T06:23:28.329939Z",
+    "finished_at": "2026-11-26T06:39:10.063358Z",
+    "environment_setup": {
+        "started_at": "2026-11-26T06:23:28.856710Z",
+        "finished_at": "2026-11-26T06:23:58.989803Z"
+    },
+    "pre_bootstrap": null,
+    "agent_setup": {
+        "started_at": "2026-11-26T06:23:58.989884Z",
+        "finished_at": "2026-11-26T06:24:01.012869Z"
+    },
+    "agent_execution": {
+        "started_at": "2026-11-26T06:24:01.013009Z",
+        "finished_at": "2026-11-26T06:38:44.569355Z"
+    },
+    "verifier": {
+        "started_at": "2026-11-26T06:38:46.656766Z",
+        "finished_at": "2026-11-26T06:38:59.117311Z"
+    },
+    "step_results": null
+}
