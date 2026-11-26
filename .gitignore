@@ -1,0 +1,7 @@
+jobs/
+*.tar.gz
+*.tar
+*.zip
+__pycache__/
+*.pyc
+.DS_Store

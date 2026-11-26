@@ -1,0 +1,86 @@
+{
+  "uid": "clearing-obs",
+  "title": "Clearing Platform Observability",
+  "tags": ["clearing", "sre", "incident", "canary"],
+  "timezone": "Asia/Shanghai",
+  "schemaVersion": 39,
+  "version": 3,
+  "time": {
+    "from": "2026-11-24T04:00:00.000Z",
+    "to": "2026-11-24T10:00:00.000Z"
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Service P99 Latency (ms) [2026-11-24]",
+      "gridPos": {"x": 0, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus-clearing"},
+      "targets": [
+        {"expr": "clearing_http_request_duration_p99_ms", "legendFormat": "{{service}}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "Per-Node P99 Latency",
+      "gridPos": {"x": 12, "y": 0, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus-clearing"},
+      "targets": [
+        {"expr": "clearing_node_p99_latency_ms", "legendFormat": "{{node}} ({{role}})", "refId": "A"}
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "HTTP 5xx / Timeout Rate (%)",
+      "gridPos": {"x": 0, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus-clearing"},
+      "targets": [
+        {"expr": "clearing_http_error_rate_percent", "legendFormat": "{{service}}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "Mutex Contention (acquire_rule_lock) & Deploy Markers",
+      "gridPos": {"x": 12, "y": 8, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "prometheus-clearing"},
+      "targets": [
+        {"expr": "clearing_mutex_contention_wait_ms", "legendFormat": "{{service}} - {{span}}", "refId": "A"},
+        {"expr": "clearing_deploy_event * 500", "legendFormat": "deploy {{service}} {{version}}", "refId": "B"}
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "PostgreSQL pg-primary-01 Active Connections (max=180)",
+      "gridPos": {"x": 0, "y": 16, "w": 8, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus-clearing"},
+      "targets": [
+        {"expr": "clearing_pg_active_connections", "legendFormat": "{{cluster}}", "refId": "A"}
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Live Canary Replay Gate (1=PASS / 0=FAIL)",
+      "gridPos": {"x": 8, "y": 16, "w": 8, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus-clearing"},
+      "targets": [
+        {"expr": "clearing_canary_replay_status", "legendFormat": "gate_pass", "refId": "A"}
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "Live Canary Verification Replay (P99 ms & Collisions)",
+      "gridPos": {"x": 16, "y": 16, "w": 8, "h": 7},
+      "datasource": {"type": "prometheus", "uid": "prometheus-clearing"},
+      "targets": [
+        {"expr": "clearing_canary_replay_p99_ms", "legendFormat": "replay_p99_ms", "refId": "A"},
+        {"expr": "clearing_canary_idem_collisions * 100", "legendFormat": "collisions_x100", "refId": "B"}
+      ]
+    }
+  ]
+}
