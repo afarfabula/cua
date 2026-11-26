@@ -1,3 +1,5 @@
 # Pre-downloaded release archives fetched by environment/fetch-binaries.sh
 environment/binaries/*
 !environment/binaries/.gitkeep
+__pycache__/
+*.pyc
