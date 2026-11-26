@@ -11,7 +11,8 @@ chown -R agent:agent /workspace
 
 rm -rf /var/lib/gitea/*
 cp -a /opt/services/clean_state/gitea/. /var/lib/gitea/
-chmod -R 700 /var/lib/gitea
+chown -R gitea:gitea /var/lib/gitea
+chmod 700 /var/lib/gitea
 
 rm -rf /var/lib/clearing-portal/*
 cp -a /opt/services/clean_state/portal/. /var/lib/clearing-portal/

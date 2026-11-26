@@ -1,7 +1,10 @@
-FROM python:3.11.11-slim-bookworm
+FROM python:3.11.11-slim-bookworm AS base
 
 ENV DEBIAN_FRONTEND=noninteractive
 WORKDIR /workspace
+
+ARG DEBIAN_MIRROR=https://mirrors.tuna.tsinghua.edu.cn
+RUN sed -i "s|https\?://deb.debian.org|${DEBIAN_MIRROR}|g" /etc/apt/sources.list.d/debian.sources
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
@@ -13,8 +16,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     xz-utils \
     && rm -rf /var/lib/apt/lists/*
 
+ARG PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple
+ARG PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/opt/ms-playwright
+
 # Install pinned Python packages & Playwright Chromium (trimmed docs/cache to stay well under 2GB)
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --retries 5 --timeout 120 \
     fastapi==0.115.6 \
     uvicorn==0.34.0 \
     pydantic==2.10.4 \
@@ -25,30 +32,40 @@ RUN pip install --no-cache-dir \
     python-multipart==0.0.20 \
     playwright==1.50.0 \
     && playwright install chromium --with-deps \
+    && chmod -R a+rX /opt/ms-playwright \
     && rm -rf /var/lib/apt/lists/* /root/.cache
 
 # Create non-root agent user
-RUN useradd -m -s /bin/bash agent
+RUN useradd -m -s /bin/bash agent \
+    && useradd --system --user-group --home-dir /var/lib/gitea --shell /usr/sbin/nologin gitea
 
 # Install pinned lightweight open-source binaries (Gitea, Mailpit, Prometheus, Perfetto UI + trace_processor_shell, Grafana)
-RUN mkdir -p /opt/bin /opt/perfetto-ui /opt/grafana /opt/services /var/lib/gitea /var/lib/mailpit /var/lib/prometheus/data /var/lib/grafana/data /var/lib/clearing-portal /var/log/supervisor /var/log/grafana \
-    && curl -fsSL --retry 5 --retry-all-errors https://github.com/go-gitea/gitea/releases/download/v28.4.0/gitea-28.4.0-linux-amd64.xz -o /tmp/gitea.xz \
-    && xz -d /tmp/gitea.xz && mv /tmp/gitea /opt/bin/gitea && chmod 755 /opt/bin/gitea \
-    && curl -fsSL --retry 5 --retry-all-errors https://github.com/axllent/mailpit/releases/download/v1.34.0/mailpit-linux-amd64.tar.gz -o /tmp/mailpit.tar.gz \
-    && tar -xzf /tmp/mailpit.tar.gz -C /opt/bin mailpit && rm -f /tmp/mailpit.tar.gz && chmod 755 /opt/bin/mailpit \
-    && curl -fsSL --retry 5 --retry-all-errors https://github.com/prometheus/prometheus/releases/download/v3.16.0/prometheus-3.16.0.linux-amd64.tar.gz -o /tmp/prom.tar.gz \
-    && tar -xzf /tmp/prom.tar.gz -C /tmp \
-    && mv /tmp/prometheus-3.16.0.linux-amd64/prometheus /opt/bin/prometheus \
-    && mv /tmp/prometheus-3.16.0.linux-amd64/promtool /opt/bin/promtool \
-    && chmod 755 /opt/bin/prometheus /opt/bin/promtool && rm -rf /tmp/prom.tar.gz /tmp/prometheus-3.16.0.linux-amd64 \
-    && curl -fsSL --retry 5 --retry-all-errors https://github.com/google/perfetto/releases/download/v59.1/perfetto-ui.zip -o /tmp/perfetto-ui.zip \
-    && python3 -m zipfile -e /tmp/perfetto-ui.zip /opt/perfetto-ui && rm -f /tmp/perfetto-ui.zip \
-    && curl -fsSL --retry 5 --retry-all-errors https://github.com/google/perfetto/releases/download/v59.1/linux-amd64.zip -o /tmp/perfetto-bins.zip \
-    && python3 -m zipfile -e /tmp/perfetto-bins.zip /tmp/perfetto-bins \
-    && mv /tmp/perfetto-bins/linux-amd64/trace_processor_shell /usr/local/bin/trace_processor_shell \
-    && chmod 755 /usr/local/bin/trace_processor_shell && rm -rf /tmp/perfetto-bins.zip /tmp/perfetto-bins \
-    && curl -fsSL --retry 5 --retry-all-errors https://github.com/grafana/grafana/releases/download/v13.3.2/grafana_13.3.2_44555861735_linux_amd64.deb -o /tmp/grafana.deb \
-    && dpkg-deb -x /tmp/grafana.deb /opt/grafana && rm -f /tmp/grafana.deb
+# Keep optional cached archives in this build stage. The runtime image receives only installed files.
+FROM base AS release-assets
+ARG GITHUB_PROXY=https://gh-proxy.com
+COPY binaries/ /tmp/binaries/
+COPY fetch-binaries.sh /opt/services/fetch-binaries.sh
+RUN mkdir -p /opt/bin /opt/perfetto-ui /opt/grafana \
+    && bash /opt/services/fetch-binaries.sh /tmp/binaries /tmp/releases \
+    && xz -dc /tmp/releases/gitea-28.4.0-linux-amd64.xz > /opt/bin/gitea \
+    && chmod 755 /opt/bin/gitea \
+    && tar -xzf /tmp/releases/mailpit-linux-amd64.tar.gz -C /opt/bin mailpit \
+    && chmod 755 /opt/bin/mailpit \
+    && tar -xzf /tmp/releases/prometheus-3.16.0.linux-amd64.tar.gz -C /opt/bin --strip-components=1 \
+        prometheus-3.16.0.linux-amd64/prometheus prometheus-3.16.0.linux-amd64/promtool \
+    && python3 -m zipfile -e /tmp/releases/perfetto-ui.zip /opt/perfetto-ui \
+    && python3 -m zipfile -e /tmp/releases/perfetto-linux-amd64.zip /tmp/perfetto-bins \
+    && install -m 755 /tmp/perfetto-bins/linux-amd64/trace_processor_shell /usr/local/bin/trace_processor_shell \
+    && dpkg-deb -x /tmp/releases/grafana_13.3.2_linux_amd64.deb /opt/grafana \
+    && rm -rf /tmp/releases /tmp/perfetto-bins
+
+FROM base
+COPY --from=release-assets /opt/bin/ /opt/bin/
+COPY --from=release-assets /opt/perfetto-ui/ /opt/perfetto-ui/
+COPY --from=release-assets /opt/grafana/ /opt/grafana/
+COPY --from=release-assets /usr/local/bin/trace_processor_shell /usr/local/bin/trace_processor_shell
+RUN mkdir -p /var/lib/gitea /var/lib/mailpit /var/lib/prometheus/data /var/lib/grafana/data \
+    /var/lib/clearing-portal /var/log/supervisor /var/log/grafana
 
 # Copy initial workspace files
 COPY workspace_init/ /workspace/
@@ -68,6 +85,7 @@ COPY seed/mailpit_seed.py /opt/services/mailpit_seed.py
 COPY supervisord.conf /etc/supervisor/conf.d/clearing.conf
 COPY entrypoint.sh /opt/services/entrypoint.sh
 COPY reset.sh /opt/services/reset.sh
+COPY initialize-state.sh /opt/services/initialize-state.sh
 RUN chmod +x /opt/services/entrypoint.sh /opt/services/reset.sh
 
 # Generate frozen logs, binary .pftrace, OpenMetrics TSDB blocks, visual PNG/PDFs, contracts, and verifier truth
@@ -79,20 +97,7 @@ RUN python3 /opt/services/generate_data.py \
     && rm -f /opt/services/seed/metrics.openmetrics
 
 # Initialize Portal SQLite DB & Gitea repositories at build time, then snapshot clean state for reset
-RUN python3 -c "import sys; sys.path.insert(0, '/opt/services/portal'); import app; app.init_db(reset=True)" \
-    && GITEA_WORK_DIR=/var/lib/gitea /opt/bin/gitea web --config /etc/gitea/app.ini >/tmp/gitea-build.log 2>&1 & \
-    GITEA_PID=$!; \
-    python3 /opt/services/gitea_seed.py \
-      --gitea-bin /opt/bin/gitea \
-      --gitea-config /etc/gitea/app.ini \
-      --gitea-work /var/lib/gitea \
-      --baseline-out /opt/services/gitea_baseline.json; \
-    kill $GITEA_PID && wait $GITEA_PID || true; \
-    rm -f /tmp/gitea-build.log; \
-    mkdir -p /opt/services/clean_state/workspace /opt/services/clean_state/gitea /opt/services/clean_state/portal; \
-    cp -a /workspace/. /opt/services/clean_state/workspace/; \
-    cp -a /var/lib/gitea/. /opt/services/clean_state/gitea/; \
-    cp -a /var/lib/clearing-portal/. /opt/services/clean_state/portal/
+RUN bash /opt/services/initialize-state.sh
 
 # Isolate backend DBs, seed truth, and service internals from agent user
 RUN mkdir -p /workspace/output \
