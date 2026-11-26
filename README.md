@@ -18,3 +18,5 @@ harbor run -p . -a oracle
 harbor run -p . -a nop
 python3 -m unittest discover -s tests -p test_topology.py
 ```
+
+手动构建时，从仓库根目录执行 `docker build -t cua-fintech-gateway ./environment`。受限网络可先运行 `bash environment/fetch-binaries.sh` 预下载发布产物。构建阶段校验 SHA-256，最终镜像只包含安装后的文件。可用 `--build-arg` 覆盖 Debian、PyPI 和 Playwright 的镜像地址，或用 `--build-arg GITHUB_PROXY=` 直连发布源。

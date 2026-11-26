@@ -20,10 +20,17 @@ test -s /opt/services/seed/sla_corridor_matrix.png
 test -s /opt/services/seed/dba_pg_lock_graph.png
 test -s /opt/services/seed/compliance_errata_20261124.pdf
 
-# Ensure agent user cannot access protected ground truth or portal SQLite DB
-if su -s /bin/bash agent -c "test -r /opt/services/ground_truth.json || test -r /var/lib/clearing-portal/portal.db"; then
-  echo "SECURITY_ERROR: agent can read protected verifier files" >&2
+# Confirm the service can read its files while the task user cannot read backend databases.
+su -s /bin/bash gitea -c "test -r /var/lib/gitea/gitea.db && test -r /etc/gitea/app.ini"
+if su -s /bin/bash agent -c "test -r /opt/services/ground_truth.json ||
+  test -r /var/lib/clearing-portal/portal.db || test -r /var/lib/gitea/gitea.db ||
+  test -r /etc/gitea/app.ini"; then
+  echo "SECURITY_ERROR: agent can read protected backend files" >&2
   exit 1
 fi
+
+su -s /bin/bash agent -c 'python3 -c "import os; from playwright.sync_api import sync_playwright
+with sync_playwright() as p:
+    assert os.access(p.chromium.executable_path, os.X_OK)"'
 
 echo "IMAGE_VERIFY_OK"
