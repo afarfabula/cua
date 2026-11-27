@@ -13,7 +13,7 @@ from common import (
     PORTAL_USER,
     RACK_SPECS,
     build_sim_payload,
-    call_sim_engine,
+    compute_state_hash,
     get_conn,
     make_session_cookie,
     now_utc8,
@@ -280,8 +280,14 @@ def signoff_ticket(team_id: str, user: str = Depends(require_auth)):
         if not row:
             raise HTTPException(status_code=404, detail=f"Unknown team {team_id}")
         ticket = dict(row)
-        payload = build_sim_payload(conn)
-        sim_raw = call_sim_engine(payload)
+        cur_hash = compute_state_hash(build_sim_payload(conn))
+        sim_row = conn.execute("SELECT * FROM simulations ORDER BY run_id DESC LIMIT 1").fetchone()
+        if not sim_row or sim_row["state_hash"] != cur_hash:
+            raise HTTPException(
+                status_code=409,
+                detail="No up-to-date Staging simulation matches the current layout and negotiated terms. Run a Staging simulation on Rack Console (:8081) first.",
+            )
+        sim_raw = json.loads(sim_row["raw_json"])
         ok, msg = verify_team_signoff(team_id, ticket, sim_raw, conn)
         new_status = "SIGNED_OFF" if ok else "VETOED"
         conn.execute("UPDATE team_tickets SET status=?, feedback=? WHERE team_id=?", (new_status, msg, team_id))

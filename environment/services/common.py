@@ -134,6 +134,7 @@ def init_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE TABLE IF NOT EXISTS simulations (
             run_id INTEGER PRIMARY KEY AUTOINCREMENT,
+            state_hash TEXT NOT NULL DEFAULT '',
             status TEXT NOT NULL,
             hard_feasible INTEGER NOT NULL,
             monthly_cost_usd REAL NOT NULL,
@@ -162,6 +163,31 @@ def init_schema(conn: sqlite3.Connection) -> None:
         """
     )
     conn.commit()
+
+
+def compute_state_hash(payload: Dict[str, Any]) -> str:
+    canonical = {
+        "assignments": sorted(
+            (
+                {
+                    "rack": str(a["rack"]),
+                    "bay": int(a["bay"]),
+                    "shift": str(a["shift"]),
+                    "team": str(a["team"]),
+                    "rdma": bool(a.get("rdma", False)),
+                    "priority_iops": bool(a.get("priority_iops", False)),
+                }
+                for a in payload.get("assignments", [])
+            ),
+            key=lambda x: (x["rack"], x["bay"], x["shift"], x["team"], x["rdma"], x["priority_iops"]),
+        ),
+        "negotiated": {
+            k: payload["negotiated"][k]
+            for k in sorted(payload.get("negotiated", {}).keys())
+        },
+    }
+    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def build_sim_payload(conn: sqlite3.Connection) -> Dict[str, Any]:

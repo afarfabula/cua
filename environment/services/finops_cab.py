@@ -9,7 +9,7 @@ from common import (
     PORTAL_PASS,
     PORTAL_USER,
     build_sim_payload,
-    call_sim_engine,
+    compute_state_hash,
     compute_tariff_cost,
     get_conn,
     make_session_cookie,
@@ -84,7 +84,14 @@ def get_ledger(user: str = Depends(require_auth)):
 def commit_release(user: str = Depends(require_auth)):
     with get_conn() as conn:
         payload = build_sim_payload(conn)
-        sim_raw = call_sim_engine(payload)
+        cur_hash = compute_state_hash(payload)
+        sim_row = conn.execute("SELECT * FROM simulations ORDER BY run_id DESC LIMIT 1").fetchone()
+        if not sim_row or sim_row["state_hash"] != cur_hash:
+            raise HTTPException(
+                status_code=409,
+                detail="Cannot commit unverified layout. Run a Staging simulation on Rack Console (:8081) matching the current layout and negotiated terms first.",
+            )
+        sim_raw = json.loads(sim_row["raw_json"])
         if not sim_raw["hard_feasible"]:
             raise HTTPException(
                 status_code=400,

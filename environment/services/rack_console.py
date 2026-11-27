@@ -18,6 +18,7 @@ from common import (
     TEAM_ORDER,
     build_sim_payload,
     call_sim_engine,
+    compute_state_hash,
     get_conn,
     make_session_cookie,
     now_utc8,
@@ -201,11 +202,12 @@ def run_simulation(user: str = Depends(require_auth)):
                 detail=f"Staging simulation quota exhausted ({used}/{MAX_SIM_RUNS}). Commit or review existing telemetry.",
             )
         payload = build_sim_payload(conn)
+        state_hash = compute_state_hash(payload)
         raw = call_sim_engine(payload)
         ts = now_utc8()
         cur = conn.execute(
-            "INSERT INTO simulations (status, hard_feasible, monthly_cost_usd, u_total, raw_json, created_at) VALUES (?, ?, ?, ?, ?, ?)",
-            (raw["status"], 1 if raw["hard_feasible"] else 0, raw["monthly_cost_usd"], raw["u_total"], json.dumps(raw), ts),
+            "INSERT INTO simulations (state_hash, status, hard_feasible, monthly_cost_usd, u_total, raw_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (state_hash, raw["status"], 1 if raw["hard_feasible"] else 0, raw["monthly_cost_usd"], raw["u_total"], json.dumps(raw), ts),
         )
         conn.commit()
         run_id = cur.lastrowid
@@ -229,23 +231,34 @@ def get_heatmap_png(user: str = Depends(require_auth)):
     with get_conn() as conn:
         assigns = [dict(r) for r in conn.execute("SELECT * FROM allocations")]
         sim_row = conn.execute("SELECT * FROM simulations ORDER BY run_id DESC LIMIT 1").fetchone()
-        tickets = {r["team_id"]: dict(r) for r in conn.execute("SELECT * FROM team_tickets")}
-
-    raw = json.loads(sim_row["raw_json"]) if sim_row else call_sim_engine(build_sim_payload(get_conn()))
-    bleed_map = {}
-    for bs in raw.get("_internal", {}).get("bleed_slots", []):
-        bleed_map[(bs["rack"], int(bs["bay"]))] = bs
-    rack_info = {r["rack"]: r for r in raw.get("racks", [])}
+        cur_hash = compute_state_hash(build_sim_payload(conn))
 
     W, H = 1280, 660
     img = Image.new("RGB", (W, H), (15, 23, 42))
     draw = ImageDraw.Draw(img)
 
+    if not sim_row:
+        draw.rectangle([0, 0, W, 58], fill=(30, 41, 59))
+        draw.text((24, 14), "H100 CLUSTER RACK ELEVATION, THERMAL BLEED & NVMe IO TELEMETRY", fill=(248, 250, 252))
+        draw.text((24, 34), "No Staging Simulation Run Yet — Run a Staging Simulation to generate telemetry heatmap", fill=(251, 191, 36))
+        draw.rectangle([40, 96, W - 40, H - 40], fill=(30, 41, 59), outline=(71, 85, 105), width=2)
+        draw.text((340, 310), "Telemetry heatmap will render after your first Staging simulation run (POST /api/simulations/run).", fill=(148, 163, 184))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return Response(content=buf.getvalue(), media_type="image/png")
+
+    raw = json.loads(sim_row["raw_json"])
+    stale_note = f" | STALE PREVIEW (layout changed since Sim #{sim_row['run_id']})" if sim_row["state_hash"] != cur_hash else ""
+    bleed_map = {}
+    for bs in raw.get("_internal", {}).get("bleed_slots", []):
+        bleed_map[(bs["rack"], int(bs["bay"]))] = bs
+    rack_info = {r["rack"]: r for r in raw.get("racks", [])}
+
     # Title banner
     draw.rectangle([0, 0, W, 58], fill=(30, 41, 59))
     draw.text((24, 14), "H100 CLUSTER RACK ELEVATION, THERMAL BLEED & NVMe IO TELEMETRY", fill=(248, 250, 252))
-    sim_label = f"Sim #{sim_row['run_id']} | Status: {raw['status']} | Utility: {raw['u_total']:.2f}/100 | Cost: ${raw['monthly_cost_usd']:,.0f}" if sim_row else "Pre-Simulation Preview (No Run Yet)"
-    draw.text((24, 34), sim_label, fill=(148, 163, 184))
+    sim_label = f"Sim #{sim_row['run_id']} | Status: {raw['status']} | Utility: {raw['u_total']:.2f}/100 | Cost: ${raw['monthly_cost_usd']:,.0f}{stale_note}"
+    draw.text((24, 34), sim_label, fill=(251, 191, 36) if stale_note else (148, 163, 184))
 
     # Legend on top right
     draw.rectangle([790, 10, 1260, 48], fill=(15, 23, 42), outline=(71, 85, 105))
