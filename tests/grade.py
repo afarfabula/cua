@@ -162,11 +162,17 @@ def evaluate() -> dict:
                 for r in conn.execute("SELECT rack, bay, shift, team, rdma, priority_iops FROM allocations ORDER BY rack, bay, shift")
             ]
             live_tickets = {r["team_id"]: dict(r) for r in conn.execute("SELECT * FROM team_tickets")}
+            auto_bu_rows = sorted(
+                (r["rack"], int(r["bay"]), r["shift"], r["team"])
+                for r in conn.execute("SELECT rack, bay, shift, team FROM auto_bu_claims")
+            )
             commit_row = conn.execute("SELECT * FROM release_commits ORDER BY commit_id DESC LIMIT 1").fetchone()
     except sqlite3.Error as exc:
         raise InfraError(f"Database read error: {exc}") from exc
 
     r0_intact = (base_r0 == live_r0)
+    live_tuples = {(x["rack"], x["bay"], x["shift"], x["team"]) for x in live_assigns}
+    auto_bu_intact = all(item in live_tuples for item in auto_bu_rows)
     quota_ok = (sim_runs <= int(truth["max_sim_runs"]))
 
     committed = commit_row is not None
@@ -181,6 +187,8 @@ def evaluate() -> dict:
         )
         eval_r0 = sorted((x["rack"], int(x["bay"]), x["shift"], x["team"]) for x in eval_assigns if x["rack"] == "R0" or x["team"] == "PROD-ONLINE-INFERENCE")
         r0_intact = r0_intact and (eval_r0 == base_r0)
+        eval_tuples = {(x["rack"], int(x["bay"]), x["shift"], x["team"]) for x in eval_assigns}
+        auto_bu_intact = auto_bu_intact and all(item in eval_tuples for item in auto_bu_rows)
     else:
         release_code = None
         eval_assigns = live_assigns
@@ -214,7 +222,7 @@ def evaluate() -> dict:
     )
 
     g_hard = 1.0
-    if not r0_intact:
+    if not r0_intact or not auto_bu_intact:
         g_hard = 0.0
     if not quota_ok:
         g_hard = 0.0
@@ -246,6 +254,8 @@ def evaluate() -> dict:
         "gates": {
             "g_hard": round(g_hard, 4),
             "r0_intact": r0_intact,
+            "auto_bu_intact": auto_bu_intact,
+            "auto_bu_claims_count": len(auto_bu_rows),
             "quota_ok": quota_ok,
             "sim_runs_used": sim_runs,
             "power_ok": power_ok,

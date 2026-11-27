@@ -11,6 +11,7 @@ from pydantic import BaseModel
 import uvicorn
 
 from common import (
+    AUTOBU_TEAMS,
     MAX_SIM_RUNS,
     PORTAL_PASS,
     PORTAL_USER,
@@ -26,7 +27,7 @@ from common import (
     verify_session_cookie,
 )
 
-app = FastAPI(title="Rack & Fabric Console", version="0.6.0")
+app = FastAPI(title="Rack & Fabric Console", version="0.6.1")
 
 LOGIN_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>Login - Rack &amp; Fabric Console</title>
@@ -157,10 +158,57 @@ def get_allocations(user: str = Depends(require_auth)):
     return {"assignments": assigns}
 
 
+def _shift_mask(shift: str) -> int:
+    return 3 if shift == "24H" else (1 if shift == "DAY_ONLY" else (2 if shift == "NIGHT_ONLY" else 0))
+
+
+def _trigger_concurrent_bu_claims(conn, run_id: int, ts: str) -> List[dict]:
+    rows = [dict(r) for r in conn.execute("SELECT rack, bay, shift, team FROM allocations")]
+    occ = {}
+    for r in rows:
+        key = (r["rack"], int(r["bay"]))
+        occ[key] = occ.get(key, 0) | _shift_mask(r["shift"])
+
+    spine_b_bays = sum(1 for r in rows if r["rack"] in {"R4", "R5"})
+    night_only_bays = sum(1 for r in rows if r["shift"] == "NIGHT_ONLY")
+    claimed = []
+
+    def try_claim(rack: str, bay: int, shift: str, team: str) -> bool:
+        m = _shift_mask(shift)
+        if occ.get((rack, bay), 0) & m:
+            return False
+        occ[(rack, bay)] = occ.get((rack, bay), 0) | m
+        conn.execute(
+            "INSERT INTO allocations (rack, bay, shift, team, rdma, priority_iops) VALUES (?, ?, ?, ?, 0, 0)",
+            (rack, bay, shift, team),
+        )
+        conn.execute(
+            "INSERT INTO auto_bu_claims (run_id, rack, bay, shift, team, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+            (run_id, rack, bay, shift, team, ts),
+        )
+        claimed.append({"rack": rack, "bay": bay, "shift": shift, "team": team})
+        return True
+
+    if run_id == 1 and spine_b_bays < 4:
+        for rack, bay in [("R5", 3), ("R5", 1), ("R4", 3), ("R4", 1)]:
+            if try_claim(rack, bay, "24H", "SHARED-AUTO-BU-MED"):
+                break
+    elif run_id == 2 and night_only_bays == 0:
+        for rack, bay in [("R3", 1), ("R3", 3), ("R5", 1), ("R5", 3)]:
+            if len(claimed) >= 2:
+                break
+            try_claim(rack, bay, "NIGHT_ONLY", "SHARED-AUTO-BU-MED")
+    elif run_id == 3 and spine_b_bays < 4:
+        for rack, bay in [("R4", 1), ("R5", 1), ("R4", 2), ("R5", 2)]:
+            if try_claim(rack, bay, "24H", "SHARED-AUTO-BU-HIGH"):
+                break
+    return claimed
+
+
 @app.post("/api/allocations")
 def save_allocations(body: AllocationsUpdate, user: str = Depends(require_auth)):
     valid_racks = {r["rack"] for r in RACK_SPECS}
-    valid_teams = {"PROD-ONLINE-INFERENCE", *TEAM_ORDER}
+    valid_teams = {"PROD-ONLINE-INFERENCE", *TEAM_ORDER, *AUTOBU_TEAMS}
     valid_shifts = {"24H", "DAY_ONLY", "NIGHT_ONLY"}
     seen_slots = {}
     for item in body.assignments:
@@ -172,7 +220,7 @@ def save_allocations(body: AllocationsUpdate, user: str = Depends(require_auth))
             raise HTTPException(status_code=400, detail=f"Invalid shift: {item.shift}")
         if item.team not in valid_teams:
             raise HTTPException(status_code=400, detail=f"Unknown team: {item.team}")
-        mask = 3 if item.shift == "24H" else (1 if item.shift == "DAY_ONLY" else 2)
+        mask = _shift_mask(item.shift)
         key = (item.rack, item.bay)
         if seen_slots.get(key, 0) & mask:
             raise HTTPException(status_code=400, detail=f"Overlapping shift on {item.rack} Bay {item.bay}")
@@ -181,6 +229,28 @@ def save_allocations(body: AllocationsUpdate, user: str = Depends(require_auth))
             raise HTTPException(status_code=400, detail=f"RDMA fabric hardware only installed on Spine-B racks R4/R5 (got {item.rack})")
 
     with get_conn() as conn:
+        locked_claims = sorted(
+            (r["rack"], int(r["bay"]), r["shift"], r["team"])
+            for r in conn.execute("SELECT rack, bay, shift, team FROM auto_bu_claims")
+        )
+        submitted_autobu = sorted(
+            (x.rack, int(x.bay), x.shift, x.team)
+            for x in body.assignments
+            if x.team in AUTOBU_TEAMS
+        )
+        for req in locked_claims:
+            if req not in submitted_autobu:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot modify or evict locked shared-pool reservation {req[0]} Bay {req[1]} ({req[2]}, {req[3]})",
+                )
+        for sub in submitted_autobu:
+            if sub not in locked_claims:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Cannot manually add synthetic shared-pool reservation {sub[3]}",
+                )
+
         conn.execute("DELETE FROM allocations")
         for item in body.assignments:
             conn.execute(
@@ -209,10 +279,17 @@ def run_simulation(user: str = Depends(require_auth)):
             "INSERT INTO simulations (state_hash, status, hard_feasible, monthly_cost_usd, u_total, raw_json, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
             (state_hash, raw["status"], 1 if raw["hard_feasible"] else 0, raw["monthly_cost_usd"], raw["u_total"], json.dumps(raw), ts),
         )
-        conn.commit()
         run_id = cur.lastrowid
+        claimed = _trigger_concurrent_bu_claims(conn, run_id, ts)
+        conn.commit()
         used_now = conn.execute("SELECT COUNT(*) FROM simulations").fetchone()[0]
-    return _sanitize_sim_for_client(raw, used_now, run_id, ts)
+    resp = _sanitize_sim_for_client(raw, used_now, run_id, ts)
+    if claimed:
+        slots_desc = ", ".join(f"{c['rack']} Bay {c['bay']} ({c['shift']})" for c in claimed)
+        resp["advisories"].append(
+            f"Shared pool event: idle slot(s) {slots_desc} were claimed by concurrent tenant workload; reload /api/allocations and re-verify before sign-off."
+        )
+    return resp
 
 
 @app.get("/api/simulations/latest")
@@ -326,10 +403,12 @@ def get_heatmap_png(user: str = Depends(require_auth)):
             else:
                 for e_idx, a in enumerate(entries[:2]):
                     tm = a["team"]
-                    tdp_cls = "HIGH" if tm in {"T1", "T3", "T6"} else ("MED" if tm in {"T2", "T4", "PROD-ONLINE-INFERENCE"} else "LOW")
+                    tdp_cls = "HIGH" if tm in {"T1", "T3", "T6", "SHARED-AUTO-BU-HIGH"} else ("MED" if tm in {"T2", "T4", "PROD-ONLINE-INFERENCE", "SHARED-AUTO-BU-MED"} else "LOW")
                     fill_c = (153, 27, 27) if tdp_cls == "HIGH" else ((30, 64, 175) if tdp_cls == "MED" else (22, 101, 52))
                     if tm == "PROD-ONLINE-INFERENCE":
                         fill_c = (120, 53, 15)
+                    elif tm in AUTOBU_TEAMS:
+                        fill_c = (107, 33, 168)
                     sub_y = by + 24 + e_idx * 30
                     sub_h = 56 if len(entries) == 1 else 27
                     draw.rectangle([rx + 16, sub_y, rx + rack_w - 16, sub_y + sub_h], fill=fill_c)
@@ -368,7 +447,7 @@ body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;margin:0;
 .rack.prot{border-color:#f59e0b}
 .bay{background:#0f172a;border:1px solid #475569;border-radius:6px;padding:8px;margin-top:8px;min-height:92px}
 .chip{background:#334155;padding:4px 6px;border-radius:4px;margin-top:4px;font-size:12px;display:flex;justify-content:space-between;align-items:center}
-.chip.HIGH{background:#7f1d1d}.chip.MED{background:#1e3a8a}.chip.LOW{background:#14532d}.chip.PROD{background:#78350f}
+.chip.HIGH{background:#7f1d1d}.chip.MED{background:#1e3a8a}.chip.LOW{background:#14532d}.chip.PROD{background:#78350f}.chip.AUTOBU{background:#581c87;border:1px solid #c084fc}
 .panel{background:#1e293b;border:1px solid #334155;border-radius:10px;padding:16px;margin-top:16px}
 select,input{background:#0f172a;color:#f8fafc;border:1px solid #475569;border-radius:4px;padding:4px 6px}
 </style></head><body>
@@ -408,7 +487,7 @@ async function load(){
   document.getElementById('simOut').textContent = JSON.stringify(sd, null, 2);
   document.getElementById('hmImg').src = '/api/simulations/heatmap.png?t=' + Date.now();
 }
-function tcls(t){if(t.startsWith('PROD'))return 'PROD';if(['T1','T3','T6'].includes(t))return 'HIGH';if(['T2','T4'].includes(t))return 'MED';return 'LOW';}
+function tcls(t){if(t.startsWith('PROD'))return 'PROD';if(t.startsWith('SHARED-AUTO-BU'))return 'AUTOBU';if(['T1','T3','T6'].includes(t))return 'HIGH';if(['T2','T4'].includes(t))return 'MED';return 'LOW';}
 function renderRacks(){
   const box = document.getElementById('racks'); box.innerHTML = '';
   for(const rk of state.racks){
@@ -421,7 +500,8 @@ function renderRacks(){
       const items = state.assignments.filter(a => a.rack===rk.rack && a.bay===b);
       for(const a of items){
         const ch = document.createElement('div'); ch.className = 'chip ' + tcls(a.team);
-        const del = rk.protected ? '' : `<button onclick="rmAssign('${a.rack}',${a.bay},'${a.shift}')" style="background:none;border:none;color:#fca5a5;cursor:pointer">x</button>`;
+        const locked = rk.protected || a.team.startsWith('SHARED-AUTO-BU');
+        const del = locked ? '<span style="color:#e9d5ff;font-size:10px">LOCKED</span>' : `<button onclick="rmAssign('${a.rack}',${a.bay},'${a.shift}')" style="background:none;border:none;color:#fca5a5;cursor:pointer">x</button>`;
         ch.innerHTML = `<span>${a.team} (${a.shift})${a.rdma?'+RDMA':''}${a.priority_iops?'+IOPS':''}</span>${del}`;
         bd.appendChild(ch);
       }

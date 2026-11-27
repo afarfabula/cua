@@ -1,4 +1,4 @@
-# infra-capacity/gpu-cluster-rebalance (v0.6.0)
+# infra-capacity/gpu-cluster-rebalance (v0.6.1)
 
 精简高区分度 CUA 任务：**编译隐藏非线性物理内核 + 6 次仿真预算门禁 + 三站点跨系统协商与可视化热力图诊断 + 帕累托凸函数评分**。
 

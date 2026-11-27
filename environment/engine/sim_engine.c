@@ -31,7 +31,9 @@ enum TeamId {
     TEAM_T6 = 6,
     TEAM_T7 = 7,
     TEAM_T8 = 8,
-    NUM_TEAMS = 9
+    TEAM_AUTOBU_MED = 9,
+    TEAM_AUTOBU_HIGH = 10,
+    NUM_TEAMS = 11
 };
 
 typedef struct {
@@ -70,7 +72,9 @@ static const TeamSpec TEAMS[NUM_TEAMS] = {
     {"T5", 3.0, 0, 10.0, 4, SHIFT_24H},
     {"T6", 5.5, 1,  6.0, 3, SHIFT_24H},
     {"T7", 3.0, 0,  0.0, 0, SHIFT_24H},
-    {"T8", 3.0, 0,  0.0, 0, SHIFT_24H}
+    {"T8", 3.0, 0,  0.0, 0, SHIFT_24H},
+    {"SHARED-AUTO-BU-MED", 4.2, 0, 0.0, 0, SHIFT_24H},
+    {"SHARED-AUTO-BU-HIGH", 5.5, 1, 0.0, 0, SHIFT_24H}
 };
 
 typedef struct {
@@ -512,7 +516,7 @@ int main(int argc, char **argv) {
     double monthly_cost = 0.0;
     for (int i = 0; i < n_assigns; i++) {
         Assignment *a = &assigns[i];
-        if (a->rack == 0 || a->team == TEAM_PROD) continue;
+        if (a->rack == 0 || a->team == TEAM_PROD || a->team == TEAM_AUTOBU_MED || a->team == TEAM_AUTOBU_HIGH) continue;
         int t = a->team;
         team_bays_raw[t]++;
 

@@ -28,6 +28,7 @@ RACK_SPECS = [
 ]
 
 TEAM_ORDER = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"]
+AUTOBU_TEAMS = {"SHARED-AUTO-BU-MED", "SHARED-AUTO-BU-HIGH"}
 
 
 def now_utc8() -> str:
@@ -160,6 +161,15 @@ def init_schema(conn: sqlite3.Connection) -> None:
             sim_json TEXT NOT NULL,
             committed_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS auto_bu_claims (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            run_id INTEGER NOT NULL,
+            rack TEXT NOT NULL,
+            bay INTEGER NOT NULL,
+            shift TEXT NOT NULL,
+            team TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        );
         """
     )
     conn.commit()
@@ -229,7 +239,7 @@ def compute_tariff_cost(allocations: List[Dict[str, Any]]) -> Dict[str, Any]:
     for a in allocations:
         rack = a["rack"]
         team = a["team"]
-        if rack == "R0" or team == "PROD-ONLINE-INFERENCE":
+        if rack == "R0" or team == "PROD-ONLINE-INFERENCE" or team in AUTOBU_TEAMS:
             continue
         shift = a["shift"]
         base = 6200.0 if shift == "24H" else (3800.0 if shift == "DAY_ONLY" else 2400.0)

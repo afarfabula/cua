@@ -115,8 +115,41 @@ def test_oracle_and_symmetry(sim_bin):
         assert convex_reward(res, 1.0) == 1.0
 
 
-def test_no_forbidden_bans_in_docs():
+def test_autobu_thermal_bleed_and_zero_cost(sim_bin):
+    full_neg = {
+        "T1": {"req_bays": 4, "shift": "24H", "require_rdma": True},
+        "T3": {"req_bays": 3, "shift": "24H", "require_single_spine": True, "require_no_bleed": True},
+        "T4": {"req_bays": 4, "shift": "NIGHT_ONLY", "require_priority_iops": True},
+        "T5": {"req_bays": 4, "shift": "DAY_ONLY"},
+    }
+    oracle_base = (
+        [{"rack": "R4", "bay": b, "shift": "24H", "team": "T1", "rdma": True, "priority_iops": False} for b in (0, 2)]
+        + [{"rack": "R5", "bay": b, "shift": "24H", "team": "T1", "rdma": True, "priority_iops": False} for b in (0, 2)]
+        + [{"rack": "R1", "bay": b, "shift": "24H", "team": "T3", "rdma": False, "priority_iops": False} for b in (0, 2)]
+        + [{"rack": "R3", "bay": 0, "shift": "24H", "team": "T3", "rdma": False, "priority_iops": False}]
+        + [{"rack": "R2", "bay": b, "shift": "24H", "team": "T6", "rdma": False, "priority_iops": False} for b in (0, 2)]
+        + [{"rack": "R3", "bay": 2, "shift": "24H", "team": "T6", "rdma": False, "priority_iops": False}]
+        + [{"rack": "R1", "bay": b, "shift": "24H", "team": "T2", "rdma": False, "priority_iops": False} for b in (1, 3)]
+        + [{"rack": "R2", "bay": b, "shift": "24H", "team": "T2", "rdma": False, "priority_iops": False} for b in (1, 3)]
+        + [{"rack": "R3", "bay": b, "shift": "NIGHT_ONLY", "team": "T4", "rdma": False, "priority_iops": True} for b in (1, 3)]
+        + [{"rack": "R4", "bay": b, "shift": "NIGHT_ONLY", "team": "T4", "rdma": False, "priority_iops": True} for b in (1, 3)]
+        + [{"rack": "R3", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (1, 3)]
+        + [{"rack": "R4", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (1, 3)]
+    )
+    # Placing SHARED-AUTO-BU-HIGH at R5 Bay 1 triggers -28% vertical bleed on adjacent T1 (R5 Bay 0, 2) + +5.5kW power, $0 FinOps cost
+    with_high = oracle_base + [{"rack": "R5", "bay": 1, "shift": "24H", "team": "SHARED-AUTO-BU-HIGH", "rdma": False, "priority_iops": False}]
+    res = run_engine(sim_bin, with_high, full_neg)
+    assert res["hard_feasible"] is True
+    assert res["monthly_cost_usd"] == 113200.0
+    assert res["teams"]["T1"]["thermal_bleed"] is True
+    assert round(res["teams"]["T1"]["efficiency"], 4) == 0.72
+    r5 = [r for r in res["racks"] if r["rack"] == "R5"][0]
+    assert r5["peak_kw"] == 16.5
+
+
+def test_no_forbidden_bans_or_autobu_spoilers_in_docs():
     banned = ["只能用 UI", "只能用UI", "禁止调用接口", "禁止调用 API", "禁止调用API", "不能用 DOM", "不能用DOM", "禁止 CDP"]
+    spoilers = ["AUTO-BU", "SHARED-AUTO-BU", "Adjacent-BU", "第 1 次", "第 2 次", "第 3 次", "run_id"]
     for p in [
         REPO_ROOT / "instruction.md",
         REPO_ROOT / "proposal.md",
@@ -127,3 +160,5 @@ def test_no_forbidden_bans_in_docs():
         txt = p.read_text(encoding="utf-8")
         for b in banned:
             assert b not in txt, f"Forbidden phrase {b!r} found in {p}"
+        for sp in spoilers:
+            assert sp not in txt, f"Spoiler phrase {sp!r} leaked into {p}"
