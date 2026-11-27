@@ -1,60 +1,76 @@
 #!/usr/bin/env python3
 """UID-checking TCP proxy for Grafana/Prometheus/Perfetto.
 
-Sits in front of the services on their original ports (3000/9090/9001).
-Blocks connections from the agent terminal (UID 1000) and unknown sources
-(fail-closed after 3 retries). Only allows root (the controlled Chromium
-browser) to reach the backends on 13000/19090/19001.
+Sits in front of services on ports 3000/9090/9001. Blocks agent terminal
+(UID 1000) and unknown sources (fail-closed). Only allows root (Chromium
+browser) to reach backends.
+
+Backends:
+- Grafana: TCP 127.0.0.1:13000
+- Prometheus: TCP 127.0.0.1:19090
+- Perfetto: Unix socket /run/perfetto.sock (no TCP port to bypass)
 """
 import asyncio
 import os
 import pathlib
+import struct
+import time
 
 AGENT_UID = int(os.environ.get("AGENT_UID", "1000"))
 
-# (listen_port, backend_host, backend_port, name)
+# (listen_port, backend_type, backend_addr, name)
+# backend_type: "tcp" → (host, port), "unix" → socket path
 PROXIES = [
-    (3000, "127.0.0.1", 13000, "Grafana"),
-    (9090, "127.0.0.1", 19090, "Prometheus"),
-    (9001, "127.0.0.1", 19001, "Perfetto"),
+    (3000, "tcp", ("127.0.0.1", 13000), "Grafana"),
+    (9090, "tcp", ("127.0.0.1", 19090), "Prometheus"),
+    (9001, "unix", "/run/perfetto.sock", "Perfetto"),
 ]
 
+# Cache Chromium PIDs to avoid scanning all /proc/*/fd on every request
+_chromium_pids = []
+_chromium_cache_time = 0.0
+_CACHE_TTL = 5.0  # refresh every 5 seconds
 
-def get_client_uid(listen_port: int, client_port: int) -> int:
-    """Look up UID of the process that owns the connection FROM client_port TO listen_port."""
-    listen_hex = format(listen_port, "04X")
-    client_hex = format(client_port, "04X")
-    inode = None
-    try:
-        with open("/proc/net/tcp") as f:
-            next(f)
-            for line in f:
-                parts = line.split()
-                if len(parts) < 10:
-                    continue
-                # Client endpoint: local=client_port, remote=listen_port
-                if parts[1].endswith(f":{client_hex}") and parts[2].endswith(f":{listen_hex}"):
-                    inode = parts[9]
-                    break
-    except (IOError, OSError):
-        return -1
-    if not inode or inode == "0":
-        return -1
-    socket_marker = f"socket:[{inode}]"
+
+def _find_chromium_pids():
+    """Find PIDs whose cmdline contains 'chrome' (covers Chromium's network-service process)."""
+    pids = []
     try:
         for entry in pathlib.Path("/proc").iterdir():
             if not entry.name.isdigit():
                 continue
             try:
-                for fd in (entry / "fd").iterdir():
-                    try:
-                        if socket_marker in str(fd.readlink()):
-                            status = (entry / "status").read_text()
-                            for line in status.splitlines():
-                                if line.startswith("Uid:"):
-                                    return int(line.split()[1])
-                    except (PermissionError, OSError):
-                        continue
+                cmdline = (entry / "cmdline").read_bytes()
+                if b"chrome" in cmdline or b"chromium" in cmdline:
+                    pids.append(int(entry.name))
+            except (PermissionError, OSError):
+                continue
+    except (PermissionError, OSError):
+        pass
+    return pids
+
+
+def _get_chromium_pids():
+    global _chromium_pids, _chromium_cache_time
+    now = time.monotonic()
+    if not _chromium_pids or (now - _chromium_cache_time) > _CACHE_TTL:
+        _chromium_pids = _find_chromium_pids()
+        _chromium_cache_time = now
+    return _chromium_pids
+
+
+def _scan_fd_for_inode(pid: int, socket_marker: str) -> int:
+    """Scan a single PID's /proc/<pid>/fd for a socket inode. Returns UID or -1."""
+    try:
+        fd_dir = pathlib.Path(f"/proc/{pid}/fd")
+        for fd in fd_dir.iterdir():
+            try:
+                target = str(fd.readlink())
+                if socket_marker in target:
+                    status = pathlib.Path(f"/proc/{pid}/status").read_text()
+                    for line in status.splitlines():
+                        if line.startswith("Uid:"):
+                            return int(line.split()[1])
             except (PermissionError, OSError):
                 continue
     except (PermissionError, OSError):
@@ -62,7 +78,63 @@ def get_client_uid(listen_port: int, client_port: int) -> int:
     return -1
 
 
-async def handle_client(reader, writer, backend_host, backend_port, listen_port, name):
+def _find_inode_in_proc(proc_file: str, listen_hex: str, client_hex: str) -> str | None:
+    """Read /proc/net/tcp or /proc/net/tcp6, find socket inode matching client→listen."""
+    try:
+        with open(proc_file) as f:
+            next(f)  # skip header
+            for line in f:
+                parts = line.split()
+                if len(parts) < 10:
+                    continue
+                local = parts[1]
+                remote = parts[2]
+                # Client endpoint: local=client_port, remote=listen_port
+                if local.endswith(f":{client_hex}") and remote.endswith(f":{listen_hex}"):
+                    return parts[9]
+    except (IOError, OSError):
+        pass
+    return None
+
+
+def get_client_uid(listen_port: int, client_port: int) -> int:
+    """Look up UID of the process that owns the connection FROM client_port TO listen_port.
+
+    Scans Chromium PIDs first (fast path), falls back to all PIDs if not found.
+    Checks both /proc/net/tcp and /proc/net/tcp6.
+    """
+    listen_hex = format(listen_port, "04X")
+    client_hex = format(client_port, "04X")
+
+    # Find socket inode in /proc/net/tcp and /proc/net/tcp6
+    inode = _find_inode_in_proc("/proc/net/tcp", listen_hex, client_hex)
+    if not inode or inode == "0":
+        inode = _find_inode_in_proc("/proc/net/tcp6", listen_hex, client_hex)
+    if not inode or inode == "0":
+        return -1
+
+    socket_marker = f"socket:[{inode}]"
+
+    # Fast path: scan only Chromium PIDs (the browser's network-service process)
+    for pid in _get_chromium_pids():
+        uid = _scan_fd_for_inode(pid, socket_marker)
+        if uid >= 0:
+            return uid
+
+    # Slow fallback: scan all PIDs (handles curl, non-Chromium clients)
+    try:
+        for entry in pathlib.Path("/proc").iterdir():
+            if not entry.name.isdigit():
+                continue
+            uid = _scan_fd_for_inode(int(entry.name), socket_marker)
+            if uid >= 0:
+                return uid
+    except (PermissionError, OSError):
+        pass
+    return -1
+
+
+async def handle_client(reader, writer, backend_type, backend_addr, listen_port, name):
     peer = writer.get_extra_info("peername")
     if not peer:
         writer.close()
@@ -80,7 +152,10 @@ async def handle_client(reader, writer, backend_host, backend_port, listen_port,
         await writer.wait_closed()
         return
     try:
-        backend_reader, backend_writer = await asyncio.open_connection(backend_host, backend_port)
+        if backend_type == "unix":
+            backend_reader, backend_writer = await asyncio.open_unix_connection(backend_addr)
+        else:
+            backend_reader, backend_writer = await asyncio.open_connection(backend_addr[0], backend_addr[1])
     except Exception:
         writer.close()
         await writer.wait_closed()
@@ -110,15 +185,15 @@ async def handle_client(reader, writer, backend_host, backend_port, listen_port,
 
 async def main():
     servers = []
-    for listen_port, backend_host, backend_port, name in PROXIES:
+    for listen_port, backend_type, backend_addr, name in PROXIES:
         server = await asyncio.start_server(
-            lambda r, w, lp=listen_port, bh=backend_host, bp=backend_port, n=name:
-                handle_client(r, w, bh, bp, lp, n),
+            lambda r, w, bt=backend_type, ba=backend_addr, lp=listen_port, n=name:
+                handle_client(r, w, bt, ba, lp, n),
             "0.0.0.0", listen_port,
         )
-        servers.append(server)
-        print(f"[uid-proxy] {name}: :{listen_port} -> {backend_host}:{backend_port} (block UID={AGENT_UID})", flush=True)
-    await asyncio.gather(*(s.serve_forever() for s in servers))
+        backend_desc = backend_addr if backend_type == "unix" else f"{backend_addr[0]}:{backend_addr[1]}"
+        print(f"[uid-proxy] {name}: :{listen_port} -> {backend_type}://{backend_desc} (block UID={AGENT_UID})", flush=True)
+    await asyncio.Event().wait()  # block forever (serve_forever is 3.12+)
 
 
 if __name__ == "__main__":

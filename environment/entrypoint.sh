@@ -51,13 +51,17 @@ if [ ! -f /var/run/clearing_services_booted ]; then
   do
     wait_for_http "$url"
   done
-  # Non-critical services: best-effort (Grafana/Prometheus/Perfetto may be slow)
+  # Non-critical services: best-effort (Grafana/Prometheus may be slow; Perfetto uses Unix socket)
   for url in \
     http://127.0.0.1:19090/-/ready \
-    http://127.0.0.1:13000/api/health \
-    http://127.0.0.1:19001/
+    http://127.0.0.1:13000/api/health
   do
     wait_for_http "$url" || true
+  done
+  # Check Perfetto Unix socket exists
+  for _ in $(seq 1 30); do
+    [ -S /run/perfetto.sock ] && break
+    sleep 0.5
   done
   touch /var/run/clearing_services_booted
 fi

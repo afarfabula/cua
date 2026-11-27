@@ -36,58 +36,106 @@ AGENT_UID = int(os.environ.get("AGENT_UID", "1000"))
 app = FastAPI(title="Clearing CMDB, Canary Gate & SLA Audit Console")
 
 
+_portal_chromium_pids = []
+_portal_chromium_cache_time = 0.0
+
+
+def _find_chromium_pids():
+    """Find PIDs whose cmdline contains 'chrome' (covers Chromium's network-service)."""
+    pids = []
+    try:
+        for entry in pathlib.Path("/proc").iterdir():
+            if not entry.name.isdigit():
+                continue
+            try:
+                cmdline = (entry / "cmdline").read_bytes()
+                if b"chrome" in cmdline or b"chromium" in cmdline:
+                    pids.append(int(entry.name))
+            except (PermissionError, OSError):
+                continue
+    except (PermissionError, OSError):
+        pass
+    return pids
+
+
+def _get_chromium_pids():
+    global _portal_chromium_pids, _portal_chromium_cache_time
+    import time as _t
+    now = _t.monotonic()
+    if not _portal_chromium_pids or (now - _portal_chromium_cache_time) > 5.0:
+        _portal_chromium_pids = _find_chromium_pids()
+        _portal_chromium_cache_time = now
+    return _portal_chromium_pids
+
+
+def _scan_pid_fd(pid: int, socket_marker: str) -> int:
+    """Scan one PID's /proc/<pid>/fd for socket inode. Returns UID or -1."""
+    try:
+        for fd in pathlib.Path(f"/proc/{pid}/fd").iterdir():
+            try:
+                if socket_marker in str(fd.readlink()):
+                    status = pathlib.Path(f"/proc/{pid}/status").read_text()
+                    for line in status.splitlines():
+                        if line.startswith("Uid:"):
+                            return int(line.split()[1])
+            except (PermissionError, OSError):
+                continue
+    except (PermissionError, OSError):
+        pass
+    return -1
+
+
+def _find_inode(proc_file: str, client_hex: str, portal_hex: str) -> str | None:
+    """Read /proc/net/tcp or tcp6, find inode for client→portal connection."""
+    try:
+        with open(proc_file) as f:
+            next(f)
+            for line in f:
+                parts = line.split()
+                if len(parts) < 10:
+                    continue
+                if parts[1].endswith(f":{client_hex}") and parts[2].endswith(f":{portal_hex}"):
+                    return parts[9]
+    except (IOError, OSError):
+        pass
+    return None
+
+
 def get_peer_uid(request: Request) -> int:
     """Look up the Unix UID of the CLIENT process that opened the TCP connection.
 
-    In /proc/net/tcp, each established connection has two entries (one per endpoint).
-    From the Portal server's perspective, local=8080/remote=client_port is the SERVER
-    socket (owned by uvicorn=root). To find the CLIENT's UID we must look up the
-    other endpoint: local=client_port, remote=8080.
-
+    Scans Chromium PIDs first (fast path for browser), falls back to all PIDs.
+    Checks both /proc/net/tcp and /proc/net/tcp6.
     Returns the client UID, or -1 if undetermined (caller should fail-closed).
     """
     client = request.client
     if not client or not client.port:
         return -1
-    client_port_hex = format(client.port, "04X")
-    portal_port_hex = format(int(os.environ.get("PORTAL_PORT", "8080")), "04X")
-    inode = None
-    try:
-        with open("/proc/net/tcp") as f:
-            next(f)  # skip header
-            for line in f:
-                parts = line.split()
-                if len(parts) < 10:
-                    continue
-                local = parts[1]   # local_address:local_port (client side)
-                remote = parts[2]  # remote_address:remote_port (server side)
-                # Match CLIENT endpoint: local=client_port, remote=portal_port
-                if local.endswith(f":{client_port_hex}") and remote.endswith(f":{portal_port_hex}"):
-                    inode = parts[9]
-                    break
-    except (IOError, OSError):
-        return -1
+    client_hex = format(client.port, "04X")
+    portal_hex = format(int(os.environ.get("PORTAL_PORT", "8080")), "04X")
+
+    inode = _find_inode("/proc/net/tcp", client_hex, portal_hex)
+    if not inode or inode == "0":
+        inode = _find_inode("/proc/net/tcp6", client_hex, portal_hex)
     if not inode or inode == "0":
         return -1
+
     socket_marker = f"socket:[{inode}]"
+
+    # Fast path: scan only Chromium PIDs
+    for pid in _get_chromium_pids():
+        uid = _scan_pid_fd(pid, socket_marker)
+        if uid >= 0:
+            return uid
+
+    # Slow fallback: scan all PIDs
     try:
         for entry in pathlib.Path("/proc").iterdir():
             if not entry.name.isdigit():
                 continue
-            fd_dir = entry / "fd"
-            try:
-                for fd in fd_dir.iterdir():
-                    try:
-                        target = str(fd.readlink())
-                        if socket_marker in target:
-                            status = (entry / "status").read_text()
-                            for line in status.splitlines():
-                                if line.startswith("Uid:"):
-                                    return int(line.split()[1])
-                    except (PermissionError, OSError):
-                        continue
-            except (PermissionError, OSError):
-                continue
+            uid = _scan_pid_fd(int(entry.name), socket_marker)
+            if uid >= 0:
+                return uid
     except (PermissionError, OSError):
         pass
     return -1
