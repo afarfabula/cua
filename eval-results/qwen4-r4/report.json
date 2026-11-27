@@ -1,0 +1,96 @@
+{
+  "task_id": "clearing-core/gateway-cascade-audit",
+  "task_version": "0.5.0",
+  "reward": 1.0,
+  "checkpoints": {
+    "R01": {
+      "weight": 0.04,
+      "score": 1.0,
+      "reason": "basic_attribution=1.00",
+      "evidence": ""
+    },
+    "R02": {
+      "weight": 0.08,
+      "score": 1.0,
+      "reason": "drilldown_score=1.00",
+      "evidence": ""
+    },
+    "R03": {
+      "weight": 0.06,
+      "score": 1.0,
+      "reason": "PR#1 state=closed merged=False",
+      "evidence": ""
+    },
+    "R04": {
+      "weight": 0.06,
+      "score": 1.0,
+      "reason": "main=ac44ec9c6a pool_ok=True nontarget_clean=True",
+      "evidence": ""
+    },
+    "R05": {
+      "weight": 0.12,
+      "score": 1.0,
+      "reason": "reg=4/4 pytest_ok=1",
+      "evidence": ""
+    },
+    "R06": {
+      "weight": 0.06,
+      "score": 1.0,
+      "reason": "isolated=2/2 protected_changed=[] unexpected_nodes=[]",
+      "evidence": "/var/lib/clearing-portal/portal.db"
+    },
+    "R07": {
+      "weight": 0.08,
+      "score": 1.0,
+      "reason": "weights={'risk-node-01': 20, 'risk-node-04': 40, 'risk-node-05': 40} iso_zero=True sum_ok=True caps_ok=True",
+      "evidence": ""
+    },
+    "R08": {
+      "weight": 0.07,
+      "score": 1.0,
+      "reason": "canary_score=1.00 fp=CFP-2D35D8E3D9",
+      "evidence": ""
+    },
+    "R09": {
+      "weight": 0.1,
+      "score": 1.0,
+      "reason": "ticket=CHG-20261124-03 status=APPROVED rev=1 win=2026-11-27 20:15-20:45",
+      "evidence": ""
+    },
+    "R10": {
+      "weight": 0.08,
+      "score": 1.0,
+      "reason": "local_clean_fp_score=1.00",
+      "evidence": ""
+    },
+    "R11": {
+      "weight": 0.1,
+      "score": 1.0,
+      "reason": "matched_batches=4/4 hist_ok=True",
+      "evidence": ""
+    },
+    "R12": {
+      "weight": 0.05,
+      "score": 1.0,
+      "reason": "cross_system_score=1.00",
+      "evidence": ""
+    },
+    "R13": {
+      "weight": 0.06,
+      "score": 1.0,
+      "reason": "postmortem_completeness=1.00",
+      "evidence": ""
+    },
+    "R14": {
+      "weight": 0.04,
+      "score": 1.0,
+      "reason": "mailpit_reply=1.00",
+      "evidence": ""
+    },
+    "R_PROVENANCE": {
+      "weight": 0.0,
+      "score": 1.0,
+      "reason": "violations=0"
+    }
+  }
+}

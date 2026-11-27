@@ -1,0 +1,114 @@
+{
+  "root_cause_service": "risk-engine",
+  "onset_time_utc8": "2026-11-24T14:13:20+08:00",
+  "culprit_version": "v2.8.4",
+  "bottleneck_span": "Mutex::wait(_rule_cache_lock)",
+  "first_onset_node": "risk-node-02",
+  "transient_recovered_node": "risk-node-04",
+  "gitea_fix_commit": "ac44ec9c6a3eab914e2d5e795027df33ddbe381a",
+  "isolated_nodes": [
+    "risk-node-02",
+    "risk-node-03"
+  ],
+  "traffic_weights": {
+    "risk-node-01": 20,
+    "risk-node-02": 0,
+    "risk-node-03": 0,
+    "risk-node-04": 40,
+    "risk-node-05": 40
+  },
+  "canary_run_fingerprint": "CFP-2D35D8E3D9",
+  "extended_freeze_window_utc8": "17:30-20:00",
+  "scheduled_release_window_utc8": "2026-11-27 20:15-20:45",
+  "total_penalty_cny": 12135.6,
+  "batches": {
+    "BATCH-20261124-01": {
+      "merchant_id": "MCH_VIP_001",
+      "tier": "VIP_T1",
+      "currency": "USD",
+      "settled_amount_cny": 433990.14,
+      "breached_tx_count": 16,
+      "duplicate_risk_count": 2,
+      "penalty_cny": 4769.58,
+      "audit_status": "AUDITED",
+      "tx_count": 40,
+      "maint_exempt_count": 0,
+      "mutex_highest_only": true,
+      "batch_cap_cny": 5000.0
+    },
+    "BATCH-20261124-02": {
+      "merchant_id": "MCH_VIP_002",
+      "tier": "VIP_T1",
+      "currency": "CNY",
+      "settled_amount_cny": 479579.58,
+      "breached_tx_count": 33,
+      "duplicate_risk_count": 0,
+      "penalty_cny": 5000.0,
+      "audit_status": "AUDITED",
+      "tx_count": 45,
+      "maint_exempt_count": 0,
+      "mutex_highest_only": false,
+      "batch_cap_cny": 5000.0
+    },
+    "BATCH-20261124-03": {
+      "merchant_id": "MCH_STD_010",
+      "tier": "STD",
+      "currency": "HKD",
+      "settled_amount_cny": 128752.64,
+      "breached_tx_count": 12,
+      "duplicate_risk_count": 2,
+      "penalty_cny": 279.99,
+      "audit_status": "AUDITED",
+      "tx_count": 35,
+      "maint_exempt_count": 0,
+      "mutex_highest_only": true,
+      "batch_cap_cny": null
+    },
+    "BATCH-20261124-04": {
+      "merchant_id": "MCH_VIP_003",
+      "tier": "VIP_T1",
+      "currency": "USD",
+      "settled_amount_cny": 241164.49,
+      "breached_tx_count": 11,
+      "duplicate_risk_count": 1,
+      "penalty_cny": 2086.03,
+      "audit_status": "AUDITED",
+      "tx_count": 30,
+      "maint_exempt_count": 3,
+      "mutex_highest_only": true,
+      "batch_cap_cny": 5000.0
+    }
+  },
+  "duplicate_risk_tx_ids": [
+    "TX-20261124-0003",
+    "TX-20261124-0012",
+    "TX-20261124-0088",
+    "TX-20261124-0097",
+    "TX-20261124-0126"
+  ],
+  "change_ticket_id": "CHG-20261124-03",
+  "change_status": "APPROVED",
+  "canary_replay": {
+    "p99_ms": 0.04,
+    "idem_collisions": 0,
+    "pool_size": 120,
+    "pg_hard_limit": 180,
+    "summary": "pool=120/180, hkd_max=0.0ms, sf=True, unk_err=True, tz_inv=True, collisions=0"
+  },
+  "gitea_pr_disposition": {
+    "PR#1": "CLOSED (rejected: DB_POOL_SIZE 220 > pg-primary-01 max_connections 180 hard limit; silent 1.0 FX fallback; idempotency bug untouched)",
+    "PR#2": "MERGED into main (trunk hotfix, commit ac44ec9c6a3eab914e2d5e795027df33ddbe381a)"
+  },
+  "regression_verification": "10/10 pytest pass on fix; 6 of 9 new concurrency/idempotency regressions fail on v2.8.4",
+  "maintenance_exempt_tx_ids": [
+    "TX-20261124-0121",
+    "TX-20261124-0122",
+    "TX-20261124-0123"
+  ],
+  "audit_basis": "COMP-ERRATA-20261124-REV2 (sealed, effective 2026-11-24T00:00:00+08:00) + sla_corridor_matrix.png + sla_legend_appendix.png + FIN-MSA-2026-VIP-088 clauses 4.2/5.1/6.1; draft v1.5 VOID ignored",
+  "locked_batches_preserved": [
+    "BATCH-20261122-01",
+    "BATCH-20261123-01",
+    "BATCH-20261123-02"
+  ]
+}
