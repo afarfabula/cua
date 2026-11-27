@@ -1,0 +1,228 @@
+{
+  "release_code": "REL-2026Q4-001",
+  "monthly_cost_usd": 113200.0,
+  "effective_cluster_utility": 98.488,
+  "simulations_used": 2,
+  "deferred_teams": [
+    "T7",
+    "T8"
+  ],
+  "signed_off_teams": [
+    "T1",
+    "T2",
+    "T3",
+    "T4",
+    "T5",
+    "T6"
+  ],
+  "assignments": [
+    {
+      "rack": "R0",
+      "bay": 0,
+      "shift": "24H",
+      "team": "PROD-ONLINE-INFERENCE",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R0",
+      "bay": 1,
+      "shift": "24H",
+      "team": "PROD-ONLINE-INFERENCE",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R0",
+      "bay": 2,
+      "shift": "24H",
+      "team": "PROD-ONLINE-INFERENCE",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R0",
+      "bay": 3,
+      "shift": "24H",
+      "team": "PROD-ONLINE-INFERENCE",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R1",
+      "bay": 0,
+      "shift": "24H",
+      "team": "T2",
+      "rdma": false,
+      "priority_iops": true
+    },
+    {
+      "rack": "R1",
+      "bay": 1,
+      "shift": "24H",
+      "team": "T2",
+      "rdma": false,
+      "priority_iops": true
+    },
+    {
+      "rack": "R1",
+      "bay": 2,
+      "shift": "24H",
+      "team": "T2",
+      "rdma": false,
+      "priority_iops": true
+    },
+    {
+      "rack": "R1",
+      "bay": 3,
+      "shift": "24H",
+      "team": "T3",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R2",
+      "bay": 0,
+      "shift": "24H",
+      "team": "T2",
+      "rdma": false,
+      "priority_iops": true
+    },
+    {
+      "rack": "R2",
+      "bay": 1,
+      "shift": "24H",
+      "team": "T6",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R2",
+      "bay": 2,
+      "shift": "24H",
+      "team": "T6",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R2",
+      "bay": 3,
+      "shift": "24H",
+      "team": "T6",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R3",
+      "bay": 0,
+      "shift": "24H",
+      "team": "T3",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R3",
+      "bay": 1,
+      "shift": "NIGHT_ONLY",
+      "team": "T4",
+      "rdma": false,
+      "priority_iops": true
+    },
+    {
+      "rack": "R3",
+      "bay": 2,
+      "shift": "24H",
+      "team": "T3",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R3",
+      "bay": 3,
+      "shift": "NIGHT_ONLY",
+      "team": "T4",
+      "rdma": false,
+      "priority_iops": true
+    },
+    {
+      "rack": "R4",
+      "bay": 0,
+      "shift": "24H",
+      "team": "T1",
+      "rdma": true,
+      "priority_iops": false
+    },
+    {
+      "rack": "R4",
+      "bay": 1,
+      "shift": "DAY_ONLY",
+      "team": "T5",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R4",
+      "bay": 1,
+      "shift": "NIGHT_ONLY",
+      "team": "T4",
+      "rdma": false,
+      "priority_iops": true
+    },
+    {
+      "rack": "R4",
+      "bay": 2,
+      "shift": "24H",
+      "team": "T1",
+      "rdma": true,
+      "priority_iops": false
+    },
+    {
+      "rack": "R4",
+      "bay": 3,
+      "shift": "DAY_ONLY",
+      "team": "T5",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R4",
+      "bay": 3,
+      "shift": "NIGHT_ONLY",
+      "team": "T4",
+      "rdma": false,
+      "priority_iops": true
+    },
+    {
+      "rack": "R5",
+      "bay": 0,
+      "shift": "24H",
+      "team": "T1",
+      "rdma": true,
+      "priority_iops": false
+    },
+    {
+      "rack": "R5",
+      "bay": 1,
+      "shift": "DAY_ONLY",
+      "team": "T5",
+      "rdma": false,
+      "priority_iops": false
+    },
+    {
+      "rack": "R5",
+      "bay": 2,
+      "shift": "24H",
+      "team": "T1",
+      "rdma": true,
+      "priority_iops": false
+    },
+    {
+      "rack": "R5",
+      "bay": 3,
+      "shift": "DAY_ONLY",
+      "team": "T5",
+      "rdma": false,
+      "priority_iops": false
+    }
+  ]
+}
