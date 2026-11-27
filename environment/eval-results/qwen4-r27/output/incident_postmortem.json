@@ -1,0 +1,275 @@
+{
+  "root_cause_service": "risk-engine",
+  "onset_time_utc8": "2026-11-24T14:14:00+08:00",
+  "culprit_version": "v2.8.4",
+  "bottleneck_span": "acquire_rule_lock",
+  "gitea_fix_commit": "3d3c59dc1ce9a6df124b99ff6a87494d6142105d",
+  "isolated_nodes": [
+    "risk-node-02",
+    "risk-node-03"
+  ],
+  "scheduled_release_window_utc8": "2026-11-27 19:45-20:15",
+  "total_penalty_cny": 11947.06,
+  "batches": {
+    "BATCH-20261124-01": {
+      "merchant_id": "MCH_VIP_001",
+      "tier": "VIP_T1",
+      "currency": "USD",
+      "settled_amount_cny": 377848.33,
+      "breached_tx_count": 16,
+      "duplicate_risk_count": 2,
+      "penalty_cny": 4656.14,
+      "audit_status": "AUDITED",
+      "breached_tx_ids": [
+        "TX-20261124-0001",
+        "TX-20261124-0002",
+        "TX-20261124-0003",
+        "TX-20261124-0004",
+        "TX-20261124-0005",
+        "TX-20261124-0006",
+        "TX-20261124-0007",
+        "TX-20261124-0008",
+        "TX-20261124-0009",
+        "TX-20261124-0010",
+        "TX-20261124-0011",
+        "TX-20261124-0012",
+        "TX-20261124-0013",
+        "TX-20261124-0014",
+        "TX-20261124-0015",
+        "TX-20261124-0016"
+      ],
+      "duplicate_risk_tx_ids": [
+        "TX-20261124-0003",
+        "TX-20261124-0012"
+      ],
+      "maintenance_exempt_tx_ids": [],
+      "penalty_before_cap_cny": 4656.14,
+      "tx_count": 40
+    },
+    "BATCH-20261124-02": {
+      "merchant_id": "MCH_VIP_002",
+      "tier": "VIP_T1",
+      "currency": "CNY",
+      "settled_amount_cny": 318816.39,
+      "breached_tx_count": 33,
+      "duplicate_risk_count": 0,
+      "penalty_cny": 5000.0,
+      "audit_status": "AUDITED",
+      "breached_tx_ids": [
+        "TX-20261124-0041",
+        "TX-20261124-0042",
+        "TX-20261124-0043",
+        "TX-20261124-0044",
+        "TX-20261124-0045",
+        "TX-20261124-0046",
+        "TX-20261124-0047",
+        "TX-20261124-0048",
+        "TX-20261124-0049",
+        "TX-20261124-0050",
+        "TX-20261124-0051",
+        "TX-20261124-0052",
+        "TX-20261124-0053",
+        "TX-20261124-0054",
+        "TX-20261124-0055",
+        "TX-20261124-0056",
+        "TX-20261124-0057",
+        "TX-20261124-0058",
+        "TX-20261124-0059",
+        "TX-20261124-0060",
+        "TX-20261124-0061",
+        "TX-20261124-0062",
+        "TX-20261124-0063",
+        "TX-20261124-0064",
+        "TX-20261124-0065",
+        "TX-20261124-0066",
+        "TX-20261124-0067",
+        "TX-20261124-0068",
+        "TX-20261124-0071",
+        "TX-20261124-0074",
+        "TX-20261124-0077",
+        "TX-20261124-0080",
+        "TX-20261124-0083"
+      ],
+      "duplicate_risk_tx_ids": [],
+      "maintenance_exempt_tx_ids": [],
+      "penalty_before_cap_cny": 8850.58,
+      "tx_count": 45
+    },
+    "BATCH-20261124-03": {
+      "merchant_id": "MCH_STD_010",
+      "tier": "STD",
+      "currency": "HKD",
+      "settled_amount_cny": 121808.37,
+      "breached_tx_count": 12,
+      "duplicate_risk_count": 2,
+      "penalty_cny": 229.68,
+      "audit_status": "AUDITED",
+      "breached_tx_ids": [
+        "TX-20261124-0086",
+        "TX-20261124-0087",
+        "TX-20261124-0088",
+        "TX-20261124-0089",
+        "TX-20261124-0090",
+        "TX-20261124-0091",
+        "TX-20261124-0092",
+        "TX-20261124-0093",
+        "TX-20261124-0094",
+        "TX-20261124-0095",
+        "TX-20261124-0096",
+        "TX-20261124-0097"
+      ],
+      "duplicate_risk_tx_ids": [
+        "TX-20261124-0088",
+        "TX-20261124-0097"
+      ],
+      "maintenance_exempt_tx_ids": [],
+      "penalty_before_cap_cny": 229.68,
+      "tx_count": 35
+    },
+    "BATCH-20261124-04": {
+      "merchant_id": "MCH_VIP_003",
+      "tier": "VIP_T1",
+      "currency": "USD",
+      "settled_amount_cny": 212353.49,
+      "breached_tx_count": 11,
+      "duplicate_risk_count": 1,
+      "penalty_cny": 2061.24,
+      "audit_status": "AUDITED",
+      "breached_tx_ids": [
+        "TX-20261124-0124",
+        "TX-20261124-0125",
+        "TX-20261124-0126",
+        "TX-20261124-0127",
+        "TX-20261124-0128",
+        "TX-20261124-0129",
+        "TX-20261124-0130",
+        "TX-20261124-0131",
+        "TX-20261124-0132",
+        "TX-20261124-0133",
+        "TX-20261124-0134"
+      ],
+      "duplicate_risk_tx_ids": [
+        "TX-20261124-0126"
+      ],
+      "maintenance_exempt_tx_ids": [
+        "TX-20261124-0121",
+        "TX-20261124-0122",
+        "TX-20261124-0123"
+      ],
+      "penalty_before_cap_cny": 2061.24,
+      "tx_count": 30
+    }
+  },
+  "duplicate_risk_tx_ids": [
+    "TX-20261124-0003",
+    "TX-20261124-0012",
+    "TX-20261124-0088",
+    "TX-20261124-0097",
+    "TX-20261124-0126"
+  ],
+  "incident_id": "INC-20261124",
+  "incident_window_utc8": "2026-11-24 14:00-18:00",
+  "change_ticket": "CHG-20261124-03",
+  "canary_status": "CANARY_PASSED",
+  "canary_replay": {
+    "replay_p99_ms": 0.03,
+    "replay_collisions": 0,
+    "replay_pool_size": 120,
+    "replay_summary": "pool=120/180, hkd_concurrent_max=0.0ms, errors=0, idem_collisions=0",
+    "grafana_gate": 1,
+    "replay_trace": "/traces/canary_replay_latest.pftrace (6 workers PASS, no acquire_rule_lock / Mutex::wait)"
+  },
+  "culprit_commit": "4d2f5a3f681819870f7a88ff4b5d0201cf8d7862",
+  "culprit_change_ticket": "CHG-20261124-01 (v2.8.4, canary NOT_RUN / bypassed, window 2026-11-24 14:10-14:15)",
+  "gitea_fix_pr": 2,
+  "rejected_pr": {
+    "number": 1,
+    "title": "hotfix: bump db pool size to 300 and timeout to 10s",
+    "action": "closed (not merged)",
+    "reason": "DB_POOL_SIZE=300 > pg-primary-01 max_connections=180 hard limit; would exhaust PG slots and down settle-node-01/pg-primary-01 (DBA snapshot + INC-20261018 red line #2)."
+  },
+  "root_cause_analysis": {
+    "mechanism": "v2.8.4 get_fx_rate held the global _rule_cache_lock across blocking FX HTTP retries (acquire_rule_lock span ~465ms each, 3x148ms 503 retries inside the lock). All 8 risk workers serialized behind the mutex (Mutex::wait up to 17.2s) -> risk-node-02/03 P99 spike -> settlement-worker idempotency retry storm -> pg-primary-01 connection saturation (168/180) -> api-gateway 504 timeouts.",
+    "secondary_bug": "generate_idempotency_key dropped tx_id and truncated cycle_time to the minute (merchant:minute), colliding keys across distinct txs -> duplicate-debit risk on retries.",
+    "evidence": {
+      "grafana_per_node_p99": "risk-node-02/03 inflect at 14:14:00 (84->192 / 87->186 ms), peak ~1704/1660 ms; settle-node-01 rises later at 14:18 (propagation victim); risk-node-01 canary v2.8.3 healthy ~86 ms throughout.",
+      "grafana_mutex": "clearing_mutex_contention_wait_ms{span=acquire_rule_lock} 2-3ms baseline -> 125ms@14:15 -> ~520ms@14:20..16:40.",
+      "deploy_marker": "clearing_deploy_event{service=risk-engine,version=v2.8.4}=1 @14:10.",
+      "perfetto": "acquire_rule_lock holds _rule_cache_lock 465ms while FxClient::refresh_fx_quote does 3x fx_quote_http_retry(503); Mutex::wait(_rule_cache_lock) up to 17220ms; idem_prefix MCH_VIP_001:2026-11-24T14:14.",
+      "dba_snapshot": "pg-primary-01 max_connections=180, active=168 (93.3%), waiting_on_row_lock=44, idle_in_transaction=39 (risk-engine)."
+    }
+  },
+  "node_disposition": {
+    "isolated": {
+      "risk-node-02": "local fault (v2.8.4 lock contention, first alert 14:14)",
+      "risk-node-03": "local fault (v2.8.4 lock contention, first alert 14:14)"
+    },
+    "not_isolated_victims_healthy": {
+      "settle-node-01": "caller queueing propagation (alert 14:18, after risk nodes); healthy primary — red line: do not isolate",
+      "pg-primary-01": "connection saturation symptom; DB primary — red line: do not isolate",
+      "risk-node-01": "canary v2.8.3, healthy ~86ms",
+      "settle-node-02": "standby, healthy ~145ms"
+    },
+    "post_isolation_audit": {
+      "pg-primary-01": {
+        "status": "ACTIVE",
+        "status_change_count": 0
+      },
+      "risk-node-01": {
+        "status": "ACTIVE",
+        "status_change_count": 0
+      },
+      "risk-node-02": {
+        "status": "ISOLATED",
+        "status_change_count": 1
+      },
+      "risk-node-03": {
+        "status": "ISOLATED",
+        "status_change_count": 1
+      },
+      "settle-node-01": {
+        "status": "ACTIVE",
+        "status_change_count": 0
+      },
+      "settle-node-02": {
+        "status": "ACTIVE",
+        "status_change_count": 0
+      }
+    }
+  },
+  "fix_description": "FX refresh moved OUTSIDE _rule_cache_lock: lock-free fast path for fresh cache hits, per-pair single-flight refresh, stale-rate fallback with cooldown on upstream failure. Idempotency key binds tx_id + merchant_id + full cycle_time. DB_POOL_SIZE kept 120 <= 180. 12 regression tests pass; canary replay p99=0.03ms, collisions=0, pool=120/180.",
+  "audit_methodology": {
+    "policy_basis": "COMP-ERRATA-20261124-REV2 (effective 2026-11-24 00:00+08:00, supersedes sla_policy_v1.md and unsigned Draft v1.5) + VIP framework contract FIN-MSA-2026-VIP-088 clause 4.2/5.4.",
+    "sla_thresholds_ms": {
+      "VIP_T1": 600,
+      "STD": 1500
+    },
+    "penalty_rates": {
+      "VIP_T1": 0.025,
+      "STD": 0.005
+    },
+    "batch_cap_cny": {
+      "VIP_T1": 5000.0,
+      "STD": null
+    },
+    "fx_rates": {
+      "USD": 7.15,
+      "HKD": 0.92,
+      "CNY": 1.0
+    },
+    "rounding": "tx_cny=round_half_up(amount_orig*fx,2); batch_penalty=min(cap, round_half_up(sum(tx_cny*rate for breached),2))",
+    "timezone": "all timestamps converted to UTC+8; date filter on settlement cycle date 2026-11-24",
+    "exclusions": "TEST_ prefixed merchants excluded (TEST_INTERNAL_PROBE/TEST_SANDBOX_01/TEST_QA_99); 2026-11-25 NEXTDAY txs excluded by date",
+    "dedup": "per tx_id keep LATEST TIMESTAMP attempt (attempt numbers are not chronological); final status/latency from that attempt",
+    "duplicate_risk": "tx_id with an earlier SETTLED attempt followed by any later attempt -> DUPLICATE_DEBIT_RISK; still counts as valid settlement",
+    "settled_amount_cny": "sum of tx_cny over valid settlements (final status SETTLED OR duplicate-risk), per policy 1.3 \"仍计为有效结算\"; maintenance-window txs still included",
+    "maintenance_exemption": "MCH_VIP_003 only, final log timestamp 00:00:00-00:59:59 UTC+8 exempt from breach/penalty unless duplicate-risk (TX-0121/0122/0123)",
+    "breach": "final status in {TIMEOUT,504,FAILED} OR final latency_ms > tier threshold (strictly greater)"
+  },
+  "locked_records_protected": [
+    "BATCH-20261122-01",
+    "BATCH-20261123-01",
+    "BATCH-20261123-02"
+  ],
+  "eod_freeze_window_utc8": "17:30-19:30 (REV-2); scheduled release 19:45-20:15 in GREEN OPEN slot"
+}

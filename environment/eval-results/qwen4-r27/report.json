@@ -1,0 +1,102 @@
+{
+  "task_id": "clearing-core/gateway-cascade-audit",
+  "task_version": "0.4.0",
+  "reward": 0.869,
+  "checkpoints": {
+    "R01": {
+      "weight": 0.06,
+      "score": 1.0,
+      "reason": "Correct root_cause_service=risk-engine",
+      "evidence": ""
+    },
+    "R02": {
+      "weight": 0.06,
+      "score": 1.0,
+      "reason": "onset/version score=1.0",
+      "evidence": ""
+    },
+    "R03": {
+      "weight": 0.06,
+      "score": 1.0,
+      "reason": "Matched bottleneck span: acquire_rule_lock",
+      "evidence": ""
+    },
+    "R04": {
+      "weight": 0.07,
+      "score": 1.0,
+      "reason": "PR#1 state=closed merged=False",
+      "evidence": ""
+    },
+    "R05": {
+      "weight": 0.08,
+      "score": 1.0,
+      "reason": "New main commit 3d3c59dc1c with safe DB_POOL_SIZE",
+      "evidence": ""
+    },
+    "R06": {
+      "weight": 0.08,
+      "score": 0.75,
+      "reason": "reg=2/3 pytest_ok=1",
+      "evidence": ""
+    },
+    "R07": {
+      "weight": 0.07,
+      "score": 1.0,
+      "reason": "isolated=2/2 protected_changed=[] unexpected_nodes=[]",
+      "evidence": "/var/lib/clearing-portal/portal.db"
+    },
+    "R08": {
+      "weight": 0.07,
+      "score": 0.7,
+      "reason": "ticket=CHG-20261124-03 win=2026-11-27 19:45-20:15 score=0.70",
+      "evidence": ""
+    },
+    "R15": {
+      "weight": 0.08,
+      "score": 1.0,
+      "reason": "canary_gate_score=1.00",
+      "evidence": ""
+    },
+    "R09": {
+      "weight": 0.07,
+      "score": 1.0,
+      "reason": "csv_ok=True dup_match=True",
+      "evidence": ""
+    },
+    "R10": {
+      "weight": 0.09,
+      "score": 0.0,
+      "reason": "matched_batches=0/4",
+      "evidence": ""
+    },
+    "R11": {
+      "weight": 0.06,
+      "score": 1.0,
+      "reason": "hist_ok=True acted=True",
+      "evidence": ""
+    },
+    "R12": {
+      "weight": 0.05,
+      "score": 1.0,
+      "reason": "cross_system_match=True",
+      "evidence": ""
+    },
+    "R13": {
+      "weight": 0.05,
+      "score": 1.0,
+      "reason": "mailpit_reply=1.00",
+      "evidence": ""
+    },
+    "R14": {
+      "weight": 0.05,
+      "score": 1.0,
+      "reason": "risk_acted=True nontarget_clean=True",
+      "evidence": ""
+    },
+    "R_PROVENANCE": {
+      "weight": 0.0,
+      "score": 1.0,
+      "reason": "violations=0"
+    }
+  }
+}
