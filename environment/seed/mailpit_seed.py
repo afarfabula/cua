@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
-"""v2 Mailpit seeder: sends 6 realistic threads including VOID draft distractor,
-red-sealed REV-2 errata PNG+PDF, color SLA corridor matrix PNG, and DBA lock snapshot PNG.
+"""v0.5.0 Mailpit seeder: sends 6 realistic threads including VOID draft scan distractor,
+red-pen annotated REV-2 errata scan PDF, two-image visual SLA corridor matrix + legend appendix,
+and non-spoiler DBA pool chart PNG.
 """
 import argparse
 import email.encoders
@@ -54,7 +55,7 @@ def main():
         "All 2026-11-23 settlement batches (BATCH-20261123-01, BATCH-20261123-02) have been audited and LOCKED.\nDo not modify locked historical records.",
     )
 
-    # 2. Distractor earlier draft (VOID / SUPERSEDED PDF, no seal)
+    # 2. Distractor earlier draft (VOID / SUPERSEDED raster PDF, no seal)
     send_mail(
         args.smtp_host, args.smtp_port,
         "pmo-drafts@clearing.local", ["sre-oncall@clearing.local"],
@@ -63,25 +64,25 @@ def main():
         attachments=[sd / "sla_draft_v1_5_void.pdf"],
     )
 
-    # 3. DBA alert with PNG diagram (warns on Gitea PR #1)
+    # 3. DBA alert with pure chart PNG (no conclusion spoilers)
     send_mail(
         args.smtp_host, args.smtp_port,
         "dba-oncall@clearing.local", ["sre-oncall@clearing.local", "dev-team@clearing.local"],
-        "[URGENT DBA] pg-primary-01 Connection Saturation & Warning on Gitea PR #1",
-        "Hi SRE,\n\nAttached is the lock-wait and connection pool snapshot from pg-primary-01 during yesterday's incident.\n"
-        "Please check the attached PNG topology diagram carefully before handling open PR #1 in Gitea!",
+        "[URGENT DBA] pg-primary-01 Connection Saturation & Lock Snapshot",
+        "Hi SRE,\n\nAttached is the pg-primary-01 connection pool and lock-wait snapshot from yesterday's incident.\n"
+        "Please review the cluster hard capacity limits in the attached chart before deciding on any open pool/timeout PRs in Gitea.",
         attachments=[sd / "dba_pg_lock_graph.png"],
     )
 
-    # 4. Compliance & CAB official red-sealed REV-2 errata + color-coded corridor matrix!
+    # 4. Compliance & CAB official red-pen annotated errata PDF + two-image visual SLA matrix & legend
     send_mail(
         args.smtp_host, args.smtp_port,
         "compliance@clearing.local", ["sre-oncall@clearing.local", "finance-audit@clearing.local"],
-        "【正式签发】2026-11-24 监管临时 SLA 勘误（REV-2）、颜色矩阵与变更冻结通知",
+        "【正式签发】2026-11-24 监管临时 SLA 勘误（REV-2）、视觉通道矩阵与图例附录",
         "各位好：\n\n"
-        "合规部与变更委员会已正式签发红章版勘误通知（见附件 sla_errata_stamp.png 与 compliance_errata_20261124.pdf），以及按商户/通道着色的可视化 SLA 矩阵图（sla_corridor_matrix.png）。\n"
-        "该正式文件自 2026-11-24 00:00:00+08:00 起生效并作废此前所有旧制度及未签章草案；另请注意结合 /workspace/contracts/vip_merchant_framework_2026.pdf 核对个别商户的维护窗免责条款。",
-        attachments=[sd / "sla_errata_stamp.png", sd / "compliance_errata_20261124.pdf", sd / "sla_corridor_matrix.png"],
+        "合规部与变更委员会已正式签发带红笔修订批注与红色审批章的勘误扫描件（compliance_errata_20261124.pdf），以及配套的视觉通道矩阵图（sla_corridor_matrix.png）与图例对照附录（sla_legend_appendix.png）。\n"
+        "通道的具体赔付档位、批次封顶、维护窗免责及互斥赔付标记均以视觉矩阵图例对照为准；该正式文件自 2026-11-24 00:00:00+08:00 起生效并作废此前旧制度及未签章草案。另请结合 /workspace/contracts/vip_merchant_framework_2026.pdf 核对个别商户的合同条款。",
+        attachments=[sd / "compliance_errata_20261124.pdf", sd / "sla_corridor_matrix.png", sd / "sla_legend_appendix.png"],
     )
 
     # 5. Merchant ops reminder
@@ -96,11 +97,12 @@ def main():
     send_mail(
         args.smtp_host, args.smtp_port,
         "sre-lead@clearing.local", ["sre-oncall@clearing.local"],
-        "[Action Required] 2026-11-24 Cascade Incident Root Cause, Canary Replay & Audit Sign-off",
-        "Hi Oncall,\n\nPlease verify the cascade timeline in Grafana and Perfetto first, fix the root cause in Gitea, run the Portal Canary Replay until Grafana & Perfetto confirm green recovery, then complete CMDB isolation, Release Approval, and SLA Batch Audit.\n"
-        "Finally reply to sre-lead@clearing.local with root cause service, onset time (UTC+8), verified main commit SHA, and total audited SLA penalty (CNY).\n",
+        "[Action Required] 2026-11-24 Cascade Incident Root Cause, Rebalance, Canary & Audit Sign-off",
+        "Hi Oncall,\n\nPlease use the CMDB high-resolution telemetry drill-down and Perfetto Trace to identify the earliest failing node, transient recovered node, and bottleneck span. "
+        "Review open Gitea PRs carefully, push a full fix to risk-engine main, isolate only confirmed persistently faulty nodes, and rebalance active risk-engine traffic weights to 100% within topology capacity and canary limits. "
+        "Run Portal Canary Replay, respond to CAB dynamic revision feedback until APPROVED, audit the 4 batches, and reply to sre-lead@clearing.local with root cause service, verified main commit SHA, canary_run_fingerprint, and total audited SLA penalty (CNY).\n",
     )
-    print("Seeded 6 v2 Mailpit emails successfully.")
+    print("Seeded 6 v0.5.0 Mailpit emails successfully.")
 
 
 if __name__ == "__main__":

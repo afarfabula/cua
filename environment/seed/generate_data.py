@@ -1,21 +1,27 @@
 #!/usr/bin/env python3
-"""v2 Deterministic generator:
+"""v0.5.0 Deterministic generator:
 - Binary Perfetto .pftrace (6 processes, 28 threads, 10,000+ noisy realistic slices, ZERO spoiler strings)
-- Multi-noise 7-panel Prometheus OpenMetrics
-- Visual Mailpit attachments: DBA lock PNG, Draft-VOID PDF, Red-Sealed REV-2 PDF & PNG, Color SLA Corridor Matrix PNG
-- Workspace Contract PDF (vip_merchant_framework_2026.pdf with MCH_VIP_003 00:00-01:00 UTC+8 exemption)
-- Mixed-timezone gateway_requests.jsonl & settlement_batches_raw.csv + protected ground_truth.json
+- Multi-resolution 5s telemetry series for server-side zoomable chart PNGs
+- Multi-noise Prometheus OpenMetrics
+- True Multimodal Mailpit attachments:
+  * Non-spoiler DBA pg-primary-01 connection & lock chart PNG
+  * Two-image visual SLA decoding: sla_corridor_matrix.png (no rule text) + sla_legend_appendix.png
+  * Pure-raster scanned PDFs (ZERO extractable text layer) with red-pen strikethrough & annotations
+- Coupled SLA ground truth (Mutex Highest-Only + Clause 4.2 maintenance base coupling)
 """
 import argparse
 import csv
 import datetime as dt
+import io
 import json
+import math
 import pathlib
 import random
 from decimal import Decimal, ROUND_HALF_UP
 
 from PIL import Image, ImageDraw, ImageFont
 from reportlab.lib.pagesizes import A4
+from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen import canvas
 
 from pftrace_encoder import PftraceWriter
@@ -41,196 +47,241 @@ def q2(val: Decimal) -> Decimal:
     return val.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
+def _save_raster_pdf(img: Image.Image, out_path: pathlib.Path) -> None:
+    """Embed a raster PIL Image into a PDF page with zero extractable text layer."""
+    buf = io.BytesIO()
+    img.convert("RGB").save(buf, format="PNG")
+    buf.seek(0)
+    c = canvas.Canvas(str(out_path), pagesize=A4)
+    w, h = A4
+    c.drawImage(ImageReader(buf), 0, 0, width=w, height=h)
+    c.showPage()
+    c.save()
+
+
 def generate_visual_and_contract_docs(seed_dir: pathlib.Path, contracts_dir: pathlib.Path) -> None:
     seed_dir.mkdir(parents=True, exist_ok=True)
     contracts_dir.mkdir(parents=True, exist_ok=True)
 
-    font_h = ImageFont.load_default(size=20)
-    font_b = ImageFont.load_default(size=16)
+    font_h = ImageFont.load_default(size=22)
+    font_b = ImageFont.load_default(size=17)
     font_s = ImageFont.load_default(size=14)
+    font_xs = ImageFont.load_default(size=12)
 
-    # 1. DBA PostgreSQL Lock-Wait & Connection Pool Snapshot (PNG)
-    img1 = Image.new("RGB", (1040, 580), (248, 250, 252))
+    # 1. DBA PostgreSQL Connection Pool & Lock-Wait Chart (pure visual chart, ZERO PR verdict spoilers)
+    img1 = Image.new("RGB", (1040, 620), (248, 250, 252))
     d1 = ImageDraw.Draw(img1)
-    d1.rectangle([20, 20, 1020, 90], fill=(15, 23, 42))
-    d1.text((40, 42), "DBA INCIDENT SNAPSHOT: pg-primary-01 Lock & Connection Pool Monitor", fill=(255, 255, 255), font=font_h)
+    d1.rectangle([20, 20, 1020, 82], fill=(15, 23, 42))
+    d1.text((40, 40), "pg-primary-01 Capacity & Lock Telemetry (2026-11-24 14:00-15:00 UTC+8)", fill=(255, 255, 255), font=font_h)
 
-    d1.rectangle([40, 120, 500, 330], fill=(255, 255, 255), outline=(203, 213, 225), width=2)
-    d1.text((60, 138), "PostgreSQL Cluster: pg-primary-01", fill=(15, 23, 42), font=font_b)
-    d1.text((60, 178), "max_connections       = 180  (HARD LIMIT)", fill=(185, 28, 28), font=font_b)
-    d1.text((60, 210), "active_connections    = 168  (93.3% SATURATED)", fill=(185, 28, 28), font=font_b)
-    d1.text((60, 242), "waiting_on_row_lock   = 44 sessions", fill=(51, 65, 85), font=font_b)
-    d1.text((60, 274), "idle_in_transaction   = 39 sessions (risk-engine)", fill=(51, 65, 85), font=font_b)
+    px1, py1, px2, py2 = 90, 115, 980, 340
+    d1.rectangle([px1, py1, px2, py2], fill=(255, 255, 255), outline=(203, 213, 225), width=2)
+    d1.text((px1 + 12, py1 + 8), "Active Connections vs Cluster Hard Limit", fill=(15, 23, 42), font=font_b)
+    for y_val in (0, 60, 120, 180, 220):
+        yy = py2 - 25 - int((y_val / 240.0) * (py2 - py1 - 55))
+        d1.line([(px1 + 45, yy), (px2 - 20, yy)], fill=(226, 232, 240), width=1)
+        d1.text((px1 + 6, yy - 7), str(y_val), fill=(100, 116, 139), font=font_xs)
+    y_180 = py2 - 25 - int((180 / 240.0) * (py2 - py1 - 55))
+    for x in range(px1 + 45, px2 - 20, 18):
+        d1.line([(x, y_180), (min(x + 10, px2 - 20), y_180)], fill=(220, 38, 38), width=3)
+    d1.text((px1 + 56, y_180 - 22), "pg_max_connections = 180 (HARD LIMIT)", fill=(185, 28, 28), font=font_s)
 
-    d1.rectangle([525, 120, 1000, 330], fill=(254, 242, 242), outline=(220, 38, 38), width=3)
-    d1.text((545, 140), "DBA WARNING ON GITEA PR #1:", fill=(185, 28, 28), font=font_b)
-    d1.text((545, 180), "DO NOT MERGE PR #1 (db_pool_size=300)!", fill=(153, 27, 27), font=font_b)
-    d1.text((545, 218), "Raising pool_size above max_connections=180", fill=(51, 65, 85), font=font_s)
-    d1.text((545, 246), "will exhaust Postgres slots and take down", fill=(51, 65, 85), font=font_s)
-    d1.text((545, 274), "settle-node-01 and pg-primary-01 completely.", fill=(51, 65, 85), font=font_s)
+    conn_pts = [42, 43, 41, 44, 58, 92, 128, 152, 168, 166, 164, 161, 158]
+    plot_pts = []
+    for idx, val in enumerate(conn_pts):
+        xx = px1 + 55 + int(idx * (px2 - px1 - 95) / (len(conn_pts) - 1))
+        yy = py2 - 25 - int((val / 240.0) * (py2 - py1 - 55))
+        plot_pts.append((xx, yy))
+        if idx % 2 == 0:
+            d1.text((xx - 15, py2 - 20), f"14:{idx*5:02d}", fill=(100, 116, 139), font=font_xs)
+    d1.line(plot_pts, fill=(37, 99, 235), width=3)
+    for xx, yy in plot_pts:
+        d1.ellipse([xx - 4, yy - 4, xx + 4, yy + 4], fill=(37, 99, 235))
+    d1.text((plot_pts[8][0] - 42, plot_pts[8][1] - 22), "peak=168 (93%)", fill=(30, 64, 175), font=font_xs)
 
-    d1.rectangle([40, 355, 1000, 545], fill=(255, 255, 255), outline=(148, 163, 184), width=2)
-    d1.text((60, 372), "Observed Lock Cascade (2026-11-24 14:14 -> 14:20 UTC+8):", fill=(15, 23, 42), font=font_b)
-    d1.text((60, 412), "[risk-node-02/03 v2.8.4] (lock contention) ---> [settlement-worker] (idempotency retry storm)", fill=(30, 64, 175), font=font_s)
-    d1.text((60, 446), "     --> [pg-primary-01] (168/180 conns held) ---> [api-gateway] (504 timeouts at 14:20)", fill=(30, 64, 175), font=font_s)
-    d1.text((60, 488), "Note: risk-node-01 (canary v2.8.3) & settle-node-01/02 are victims/healthy.", fill=(21, 128, 61), font=font_s)
+    bx1, by1, bx2, by2 = 90, 365, 980, 585
+    d1.rectangle([bx1, by1, bx2, by2], fill=(255, 255, 255), outline=(203, 213, 225), width=2)
+    d1.text((bx1 + 12, by1 + 10), "Session Wait Breakdown at 14:20 UTC+8 (Count of Sessions)", fill=(15, 23, 42), font=font_b)
+    bars = [
+        ("risk-engine: waiting_on_row_lock", 44, (220, 38, 38)),
+        ("risk-engine: idle_in_transaction", 39, (234, 88, 12)),
+        ("settlement-worker: pool_wait", 18, (217, 119, 6)),
+        ("api-gateway: active_read", 8, (22, 163, 74)),
+    ]
+    for i, (label, val, col) in enumerate(bars):
+        ry = by1 + 52 + i * 38
+        d1.text((bx1 + 20, ry + 4), label, fill=(30, 41, 59), font=font_s)
+        bar_left = bx1 + 360
+        bar_w = int((val / 50.0) * 440)
+        d1.rectangle([bar_left, ry, bar_left + bar_w, ry + 24], fill=col)
+        d1.text((bar_left + bar_w + 10, ry + 4), f"{val} sessions", fill=col, font=font_s)
     img1.save(seed_dir / "dba_pg_lock_graph.png")
 
-    # 2. Color-Coded Visual SLA & Corridor Matrix (PNG) - spatial/color reasoning!
+    # 2A. Visual SLA Corridor Matrix PNG (NO rule/rate/cap/exemption text — strictly visual encoding!)
     img_mat = Image.new("RGB", (1040, 560), (255, 255, 255))
     dm = ImageDraw.Draw(img_mat)
-    dm.rectangle([20, 20, 1020, 82], fill=(30, 41, 59))
-    dm.text((40, 40), "VISUAL SLA & CHANGE CORRIDOR MATRIX (EFFECTIVE 2026-11-24)", fill=(255, 255, 255), font=font_h)
+    dm.rectangle([20, 20, 1020, 82], fill=(15, 23, 42))
+    dm.text((40, 40), "SLA CORRIDOR MATRIX (2026-11-24) — DECODE WITH LEGEND APPENDIX", fill=(255, 255, 255), font=font_h)
 
-    # Legend color boxes (stacked vertically so zero text clips off-canvas)
-    dm.rectangle([40, 96, 70, 118], fill=(220, 38, 38))
-    dm.text((82, 98), "RED = Tightened 600ms / 2.5% (Cap 5000 CNY) or EOD Freeze Window", fill=(153, 27, 27), font=font_s)
-    dm.rectangle([40, 128, 70, 150], fill=(245, 158, 11))
-    dm.text((82, 130), "AMBER = Contractual Maintenance Exemption (00:00-01:00 UTC+8)", fill=(146, 64, 14), font=font_s)
-    dm.rectangle([40, 160, 70, 182], fill=(22, 163, 74))
-    dm.text((82, 162), "GREEN = Standard 1500ms / 0.5% (Uncapped) or Allowed Release Slot", fill=(22, 101, 52), font=font_s)
-
-    # Grid of merchant cards (color coded)
     cards = [
-        (40, 204, 505, 326, (254, 226, 226), (220, 38, 38), "MCH_VIP_001 (VIP_T1 | USD | FX=7.15)", "RED SLA: >600ms or Err -> 2.5%, Cap 5000 CNY"),
-        (535, 204, 1000, 326, (254, 226, 226), (220, 38, 38), "MCH_VIP_002 (VIP_T1 | CNY | FX=1.00)", "RED SLA: >600ms or Err -> 2.5%, Cap 5000 CNY"),
-        (40, 348, 505, 470, (220, 252, 231), (22, 163, 74), "MCH_STD_010 (STD | HKD | FX=0.92)", "GREEN SLA: >1500ms or Err -> 0.5%, Uncapped"),
-        (535, 348, 1000, 470, (254, 243, 199), (245, 158, 11), "MCH_VIP_003 (VIP_T1 | USD | FX=7.15)", "RED SLA + AMBER CLAUSE 4.2: 00:00-01:00 UTC+8 Exempt"),
+        (40, 110, 500, 305, (254, 226, 226), (220, 38, 38), "MCH_VIP_001", "Currency: USD  |  Batch: BATCH-20261124-01", True, False, True),
+        (540, 110, 1000, 305, (254, 226, 226), (220, 38, 38), "MCH_VIP_002", "Currency: CNY  |  Batch: BATCH-20261124-02", True, False, False),
+        (40, 330, 500, 525, (220, 252, 231), (22, 163, 74), "MCH_STD_010", "Currency: HKD  |  Batch: BATCH-20261124-03", False, False, True),
+        (540, 330, 1000, 525, (254, 226, 226), (220, 38, 38), "MCH_VIP_003", "Currency: USD  |  Batch: BATCH-20261124-04", True, True, True),
     ]
-    for x1, y1, x2, y2, bg, bd, title, sub in cards:
-        dm.rectangle([x1, y1, x2, y2], fill=bg, outline=bd, width=3)
-        dm.text((x1 + 18, y1 + 22), title, fill=(15, 23, 42), font=font_b)
-        dm.text((x1 + 18, y1 + 64), sub, fill=(30, 41, 59), font=font_s)
-    dm.rectangle([40, 492, 1000, 536], fill=(241, 245, 249), outline=(148, 163, 184), width=2)
-    dm.text((56, 504), "EOD Release Freeze Strip: [17:30 ==== RED FROZEN ==== 19:30]  |  [19:30 ==== GREEN OPEN ==== 23:59]", fill=(15, 23, 42), font=font_b)
+    for x1, y1, x2, y2, bg, bd, title, sub, tri, hatch, dbl in cards:
+        if dbl:
+            dm.rectangle([x1 - 6, y1 - 6, x2 + 6, y2 + 6], outline=(30, 58, 138), width=4)
+            dm.rectangle([x1, y1, x2, y2], fill=bg, outline=(30, 58, 138), width=3)
+        else:
+            dm.rectangle([x1, y1, x2, y2], fill=bg, outline=bd, width=4)
+        dm.text((x1 + 22, y1 + 26), title, fill=(15, 23, 42), font=font_h)
+        dm.text((x1 + 22, y1 + 72), sub, fill=(30, 41, 59), font=font_b)
+        if tri:
+            dm.polygon([(x2 - 48, y1 + 48), (x2 - 18, y1 + 48), (x2 - 33, y1 + 18)], fill=(220, 38, 38))
+        if hatch:
+            hy1, hy2 = y2 - 42, y2 - 6
+            dm.rectangle([x1 + 6, hy1, x2 - 6, hy2], fill=(254, 243, 199), outline=(217, 119, 6), width=2)
+            for hx in range(x1 + 10, x2 - 14, 18):
+                dm.line([(hx, hy2), (hx + 16, hy1)], fill=(217, 119, 6), width=4)
     img_mat.save(seed_dir / "sla_corridor_matrix.png")
 
-    # 3. Red-Sealed REV-2 Compliance Errata (PNG)
-    img2 = Image.new("RGB", (1040, 640), (255, 253, 247))
-    d2 = ImageDraw.Draw(img2)
-    d2.rectangle([25, 25, 1015, 615], outline=(127, 29, 29), width=4)
-    d2.rectangle([35, 35, 1005, 105], fill=(153, 27, 27))
-    d2.text((55, 58), "COMPLIANCE & CAB URGENT ERRATA NOTICE (EFFECTIVE 2026-11-24 00:00 UTC+8)", fill=(255, 255, 255), font=font_h)
+    # 2B. Visual Legend Appendix PNG
+    img_leg = Image.new("RGB", (1040, 640), (255, 253, 247))
+    dl = ImageDraw.Draw(img_leg)
+    dl.rectangle([20, 20, 1020, 82], fill=(30, 41, 59))
+    dl.text((40, 40), "SLA VISUAL LEGEND APPENDIX (COMP-ERRATA-20261124-REV2)", fill=(255, 255, 255), font=font_h)
 
-    lines = [
-        "Document ID: COMP-ERRATA-20261124-REV2   (Supersedes sla_policy_v1.md & Draft v1.5)",
-        "",
-        "1. VIP Tier-1 (tier = VIP_T1) SLA Override:",
-        "   - Latency Threshold  : 600 ms   (tightened from 1000 ms in v1.0)",
-        "   - Penalty Rate       : 2.5% (0.025) of settled CNY amount per breached tx",
-        "   - Per-Batch Cap      : 5000.00 CNY maximum penalty per batch",
-        "",
-        "2. Standard Tier (tier = STD) remains 1500 ms threshold, 0.5% (0.005), uncapped.",
-        "",
-        "3. Fixed Settlement FX Conversion Rates for 2026-11-24:",
-        "   - 1 USD = 7.15 CNY  |  1 HKD = 0.92 CNY  |  1 CNY = 1.00 CNY",
-        "   (tx_cny = round_half_up(amount_orig * fx, 2); batch_pen = min(cap, round_half_up(sum(tx_cny * rate), 2)))",
-        "",
-        "4. Mandatory Daily EOD Clearing Change Freeze Window:",
-        "   - Production rollouts for risk-engine / settlement-worker are FORBIDDEN",
-        "     between 17:30 and 19:30 UTC+8 (supersedes 20:00-22:00 in v1.0).",
+    rows = [
+        ("swatch_red", "Crimson Red Card = VIP_T1: Threshold > 600 ms (or TIMEOUT/504/FAILED) -> SLA 2.5% | Dup-Debit Comp 3.0%"),
+        ("swatch_green", "Emerald Green Card = STD: Threshold > 1500 ms (or TIMEOUT/504/FAILED) -> SLA 0.5% | Dup-Debit Comp 1.0%"),
+        ("triangle", "Top-Right Red Triangle = Per-Batch Penalty Cap: min(batch_raw_penalty, 5000.00 CNY)"),
+        ("hatch", "Bottom Amber Diagonal Hatch = Clause 4.2 Maint Window Exempt (00:00-01:00 UTC+8): 0 breach, counts in settled_cny"),
+        ("double", "Double Navy Outer Border = Mutex Highest-Only: tx_penalty = max(sla_penalty, dup_comp) (no stacking)"),
     ]
-    y = 128
-    for line in lines:
-        color = (153, 27, 27) if ("600 ms" in line or "2.5%" in line or "5000.00" in line or "17:30" in line or "7.15" in line or "0.92" in line) else (30, 41, 59)
-        d2.text((55, y), line, fill=color, font=font_s)
-        y += 27
+    for i, (kind, desc) in enumerate(rows):
+        ry = 115 + i * 74
+        dl.rectangle([40, ry, 1000, ry + 58], fill=(255, 255, 255), outline=(203, 213, 225), width=2)
+        if kind == "swatch_red":
+            dl.rectangle([56, ry + 10, 106, ry + 48], fill=(254, 226, 226), outline=(220, 38, 38), width=3)
+        elif kind == "swatch_green":
+            dl.rectangle([56, ry + 10, 106, ry + 48], fill=(220, 252, 231), outline=(22, 163, 74), width=3)
+        elif kind == "triangle":
+            dl.polygon([(62, ry + 46), (100, ry + 46), (81, ry + 12)], fill=(220, 38, 38))
+        elif kind == "hatch":
+            dl.rectangle([54, ry + 12, 108, ry + 46], fill=(254, 243, 199), outline=(217, 119, 6), width=2)
+            for hx in range(58, 104, 12):
+                dl.line([(hx, ry + 45), (hx + 10, ry + 13)], fill=(217, 119, 6), width=3)
+        elif kind == "double":
+            dl.rectangle([52, ry + 8, 110, ry + 50], outline=(30, 58, 138), width=3)
+            dl.rectangle([58, ry + 14, 104, ry + 44], outline=(30, 58, 138), width=2)
+        dl.text((126, ry + 20), desc, fill=(15, 23, 42), font=font_s)
 
-    d2.ellipse([780, 420, 975, 585], outline=(220, 38, 38), width=5)
-    d2.ellipse([788, 428, 967, 577], outline=(220, 38, 38), width=2)
-    d2.text((818, 470), "APPROVED SEAL", fill=(220, 38, 38), font=font_b)
-    d2.text((806, 500), "RISK & COMPLIANCE", fill=(220, 38, 38), font=font_s)
-    d2.text((836, 528), "2026-11-24", fill=(220, 38, 38), font=font_b)
-    img2.save(seed_dir / "sla_errata_stamp.png")
+    dl.rectangle([40, 495, 1000, 608], fill=(241, 245, 249), outline=(148, 163, 184), width=2)
+    dl.text((56, 512), "2026-11-24 Settlement FX:  1 USD = 7.15 CNY   |   1 HKD = 0.92 CNY   |   1 CNY = 1.00 CNY", fill=(15, 23, 42), font=font_b)
+    dl.text((56, 545), "Rounding: tx_cny = round_half_up(amount_orig * fx, 2); batch_pen = min(cap, round_half_up(sum(tx_pen), 2))", fill=(51, 65, 85), font=font_s)
+    dl.text((56, 574), "Initial EOD Change Freeze Window: 17:30 - 19:30 UTC+8 (subject to live CAB extension notices)", fill=(153, 27, 27), font=font_s)
+    img_leg.save(seed_dir / "sla_legend_appendix.png")
 
-    # 4. Formal Sealed REV-2 PDF
-    c = canvas.Canvas(str(seed_dir / "compliance_errata_20261124.pdf"), pagesize=A4)
-    c.setFont("Helvetica-Bold", 15)
-    c.drawString(50, 790, "COMPLIANCE & CAB URGENT ERRATA NOTICE (REV-2)")
-    c.setFont("Helvetica", 11)
-    pdf_lines = [
-        "Document ID: COMP-ERRATA-20261124-REV2 | Effective: 2026-11-24 00:00:00+08:00",
-        "This sealed notice supersedes sla_policy_v1.md and unsigned Draft v1.5:",
-        "",
-        "1. VIP_T1 SLA Threshold: 600 ms (previously 1000 ms in v1.0).",
-        "2. VIP_T1 Penalty Rate: 2.5% (0.025) of settled CNY amount, capped at 5000.00 CNY per batch.",
-        "3. STD SLA Threshold: 1500 ms, Penalty Rate: 0.5% (0.005), no batch cap.",
-        "4. Settlement FX Rates (2026-11-24): 1 USD = 7.15 CNY | 1 HKD = 0.92 CNY | 1 CNY = 1.00 CNY.",
-        "5. Rounding: tx_cny = round_half_up(amount_orig * fx_rate, 2).",
-        "   batch_penalty = min(cap, round_half_up(sum(tx_cny * rate for breached txs), 2)).",
-        "6. Mandatory EOD Change Freeze Window: 17:30 - 19:30 UTC+8 daily.",
-        "7. Sandbox Exclusion: Any merchant_id prefixed with TEST_ is excluded from SLA & batches.",
+    # 3. Pure-Raster Scanned PDF: REV-2 Errata with red strikethrough & handwritten annotations (NO PDF text layer)
+    img_err = Image.new("RGB", (1240, 1754), (255, 253, 246))
+    de = ImageDraw.Draw(img_err)
+    de.rectangle([45, 45, 1195, 1705], outline=(127, 29, 29), width=5)
+    de.rectangle([60, 60, 1180, 165], fill=(153, 27, 27))
+    de.text((90, 96), "COMPLIANCE & CAB URGENT ERRATA NOTICE (REV-2)", fill=(255, 255, 255), font=ImageFont.load_default(size=30))
+    de.text((80, 195), "Document ID: COMP-ERRATA-20261124-REV2   |   Effective: 2026-11-24 00:00:00 +08:00", fill=(30, 41, 59), font=ImageFont.load_default(size=22))
+    de.text((80, 235), "Supersedes sla_policy_v1.md and unsigned discussion draft v1.5.", fill=(71, 85, 105), font=ImageFont.load_default(size=20))
+
+    f_print = ImageFont.load_default(size=22)
+    f_red = ImageFont.load_default(size=23)
+    amendments = [
+        ("1. VIP_T1 SLA Latency Threshold:", "1000 ms", "-> REV-2: 600 ms (strictly >)"),
+        ("2. VIP_T1 SLA Breach Rate:", "1.5% (0.015)", "-> REV-2: 2.5% (0.025)"),
+        ("3. VIP_T1 Per-Batch Penalty Cap:", "Uncapped", "-> REV-2: Cap 5000.00 CNY"),
+        ("4. Daily EOD Change Freeze Window:", "20:00 - 22:00 UTC+8", "-> REV-2: 17:30 - 19:30 UTC+8"),
     ]
-    py = 755
-    for line in pdf_lines:
-        c.drawString(50, py, line)
-        py -= 20
-    c.setStrokeColorRGB(0.85, 0.1, 0.1)
-    c.setLineWidth(2)
-    c.circle(470, 520, 48)
-    c.setFillColorRGB(0.85, 0.1, 0.1)
-    c.setFont("Helvetica-Bold", 9)
-    c.drawCentredString(470, 525, "APPROVED SEAL")
-    c.drawCentredString(470, 512, "2026-11-24")
-    c.save()
+    yy = 320
+    for title, old_val, new_val in amendments:
+        de.text((80, yy), title, fill=(15, 23, 42), font=f_print)
+        de.text((510, yy), old_val, fill=(100, 116, 139), font=f_print)
+        old_w = len(old_val) * 13
+        de.line([(505, yy + 14), (515 + old_w, yy + 14)], fill=(220, 38, 38), width=4)
+        de.text((535 + old_w, yy - 2), new_val, fill=(185, 28, 28), font=f_red)
+        yy += 78
 
-    # 5. Distractor Draft PDF (VOID / SUPERSEDED watermark, NO seal!)
-    c_void = canvas.Canvas(str(seed_dir / "sla_draft_v1_5_void.pdf"), pagesize=A4)
-    c_void.setFont("Helvetica-Bold", 15)
-    c_void.drawString(50, 790, "INTERNAL DISCUSSION DRAFT v1.5 (NOT APPROVED)")
-    c_void.setFont("Helvetica", 11)
+    extra_lines = [
+        "5. Standard Tier (STD): 1500 ms threshold, 0.5% (0.005) SLA rate, uncapped.",
+        "6. Duplicate-Debit Risk Compensation (DUPLICATE_DEBIT_RISK):",
+        "   - VIP_T1: 3.0% (0.030) of tx_cny  |  STD: 1.0% (0.010) of tx_cny",
+        "   - For double-bordered corridors on visual matrix: Mutex Highest-Only",
+        "     tx_penalty = max(sla_penalty, dup_compensation) (NEVER stack both).",
+        "7. Settlement FX (2026-11-24): 1 USD = 7.15 CNY | 1 HKD = 0.92 CNY | 1 CNY = 1.00 CNY",
+        "8. Rounding: tx_cny = round_half_up(amount_orig * fx, 2); batch_pen = min(cap, round_half_up(sum, 2)).",
+        "9. Sandbox Filter: Exclude TEST_ merchants; convert all timestamps to UTC+8 before 2026-11-24 filter.",
+        "10. Final Approval Gate: Follow live CAB review extensions emitted during change approval.",
+    ]
+    yy += 30
+    for line in extra_lines:
+        de.text((80, yy), line, fill=(15, 23, 42), font=f_print)
+        yy += 52
+
+    de.ellipse([860, 1280, 1140, 1520], outline=(220, 38, 38), width=7)
+    de.ellipse([872, 1292, 1128, 1508], outline=(220, 38, 38), width=3)
+    de.text((915, 1360), "APPROVED SEAL", fill=(220, 38, 38), font=ImageFont.load_default(size=24))
+    de.text((905, 1400), "RISK & COMPLIANCE", fill=(220, 38, 38), font=ImageFont.load_default(size=19))
+    de.text((940, 1436), "2026-11-24", fill=(220, 38, 38), font=ImageFont.load_default(size=22))
+    _save_raster_pdf(img_err, seed_dir / "compliance_errata_20261124.pdf")
+
+    # 4. Distractor VOID Draft Scan PDF (pure raster, unsealed)
+    img_void = Image.new("RGB", (1240, 1754), (250, 250, 250))
+    dv = ImageDraw.Draw(img_void)
+    dv.text((80, 120), "INTERNAL DISCUSSION DRAFT v1.5 (NOT APPROVED)", fill=(30, 41, 59), font=ImageFont.load_default(size=30))
     for idx, line in enumerate([
-        "Proposed VIP_T1 SLA Threshold: 800 ms | Penalty Rate: 2.0% | Cap: 4000.00 CNY",
+        "Proposed VIP_T1 Threshold: 800 ms | Penalty Rate: 2.0% | Cap: 4000.00 CNY",
         "Proposed EOD Freeze Window: 19:00 - 21:00 UTC+8",
+        "Proposed Duplicate-Debit Stacking: Add SLA + Duplicate penalties together",
         "NOTE: Unsigned draft superseded by COMP-ERRATA-20261124-REV2.",
     ]):
-        c_void.drawString(50, 750 - idx * 22, line)
-    c_void.saveState()
-    c_void.translate(300, 420)
-    c_void.rotate(35)
-    c_void.setFillColorRGB(0.65, 0.65, 0.65)
-    c_void.setFont("Helvetica-Bold", 42)
-    c_void.drawCentredString(0, 0, "DRAFT - VOID / SUPERSEDED")
-    c_void.restoreState()
-    c_void.save()
+        dv.text((80, 230 + idx * 65), line, fill=(51, 65, 85), font=f_print)
+    wm = Image.new("RGBA", (1240, 1754), (0, 0, 0, 0))
+    dw = ImageDraw.Draw(wm)
+    dw.text((180, 820), "DRAFT - VOID / SUPERSEDED", fill=(180, 180, 180, 160), font=ImageFont.load_default(size=60))
+    wm = wm.rotate(30)
+    img_void = Image.alpha_composite(img_void.convert("RGBA"), wm).convert("RGB")
+    _save_raster_pdf(img_void, seed_dir / "sla_draft_v1_5_void.pdf")
 
-    # 6. Workspace VIP Merchant Framework Contract PDF (Clause 4.2 MCH_VIP_003 exemption!)
-    c_con = canvas.Canvas(str(contracts_dir / "vip_merchant_framework_2026.pdf"), pagesize=A4)
-    c_con.setFont("Helvetica-Bold", 15)
-    c_con.drawString(50, 790, "CROSS-BORDER VIP MERCHANT MASTER FRAMEWORK CONTRACT (2026)")
-    c_con.setFont("Helvetica", 11)
-    con_lines = [
-        "Contract No: FIN-MSA-2026-VIP-088 | Parties: Clearing Core Platform & VIP Merchants",
+    # 5. Pure-Raster Contract Scan PDF (vip_merchant_framework_2026.pdf)
+    img_con = Image.new("RGB", (1240, 1754), (255, 255, 255))
+    dc = ImageDraw.Draw(img_con)
+    dc.rectangle([50, 50, 1190, 1700], outline=(30, 41, 59), width=3)
+    dc.text((80, 100), "VIP MERCHANT FRAMEWORK AGREEMENT (2026)", fill=(15, 23, 42), font=ImageFont.load_default(size=28))
+    contract_lines = [
+        "Contract Reference: FIN-MSA-2026-VIP-088",
         "",
-        "Clause 3.1 - Batch Settlement Cut-off:",
-        "   All settlement batches are bounded by calendar day in Asia/Shanghai (UTC+8).",
-        "   Logs containing UTC ('Z') timestamps must be converted to UTC+8 prior to date filtering.",
-        "",
-        "Clause 4.2 - Scheduled Bank Maintenance Window Exemption (MCH_VIP_003 ONLY):",
-        "   Due to Meridian Luxury Pay (MCH_VIP_003) overseas correspondent bank reconciliation,",
-        "   transactions for MCH_VIP_003 whose final log timestamp falls within 00:00:00 to 00:59:59",
-        "   UTC+8 on any day SHALL STILL BE INCLUDED in settled_amount_cny, but ARE EXEMPT from",
-        "   SLA latency breach counting and SLA penalty calculation (unless flagged as duplicate risk).",
-        "",
-        "Clause 5.4 - Duplicate Debit Risk Reporting:",
-        "   Any tx_id that recorded SETTLED on an earlier attempt and underwent a subsequent retry",
-        "   attempt must be reported under duplicate_risk_tx_ids and batch duplicate_risk_count.",
+        "Clause 4.1: Standard SLA remedies apply unless superseded by a sealed regulatory errata notice.",
+        "Clause 4.2 (Scheduled Maintenance Exemption for MCH_VIP_003):",
+        "  Transactions settled for Meridian Luxury Pay (MCH_VIP_003) between",
+        "  00:00:00 and 00:59:59 UTC+8 (16:00:00-16:59:59 UTC prior day)",
+        "  are EXEMPT from SLA latency breach counts and SLA breach penalties,",
+        "  while remaining INCLUDED in settled_amount_cny batch volume.",
+        "Clause 5.1 (Mutex Highest-Only Non-Stacking):",
+        "  For corridors designated with mutex protection, if a single transaction",
+        "  incurs both an SLA breach and a DUPLICATE_DEBIT_RISK event, total",
+        "  compensation for that transaction equals max(sla_penalty, dup_comp).",
+        "Clause 6.1: All batch audits are evaluated strictly in UTC+8 calendar day.",
     ]
-    py = 755
-    for line in con_lines:
-        c_con.drawString(50, py, line)
-        py -= 20
-    c_con.save()
+    cy = 200
+    for line in contract_lines:
+        dc.text((80, cy), line, fill=(15, 23, 42), font=f_print)
+        cy += 58
+    _save_raster_pdf(img_con, contracts_dir / "vip_merchant_framework_2026.pdf")
 
 
 def generate_complex_pftrace(trace_path: pathlib.Path) -> None:
-    """Generate authentic binary .pftrace with 6 processes, 28 threads, 10,000+ slices,
-    heavy background noise, and ZERO spoiler text!
-    """
+    """Generate authentic binary .pftrace with 6 processes, 28 threads, 10,000+ slices."""
     trace_path.parent.mkdir(parents=True, exist_ok=True)
     w = PftraceWriter(seq_id=2026)
 
-    # 6 Service Processes
     procs = [
         (1001, 101, "api-gateway (v3.1.0)"),
         (1002, 102, "risk-engine (v2.8.4)"),
@@ -242,7 +293,6 @@ def generate_complex_pftrace(trace_path: pathlib.Path) -> None:
     for u, pid, name in procs:
         w.add_process_track(u, pid, name)
 
-    # 28 Thread Swimlanes
     threads = {}
     uid = 2000
     def reg(pu, pid, tid, tname):
@@ -277,12 +327,10 @@ def generate_complex_pftrace(trace_path: pathlib.Path) -> None:
         reg(1006, 106, 610 + i, f"redis-heartbeat-{i}")
 
     rng = random.Random(20261124)
-    t0_ns = 1_000_000_000  # 1s base
+    t0_ns = 1_000_000_000
 
-    # 1) Background noise across all 45s (healthchecks, GC, metrics, redis ping, kafka poll, normal fast traffic)
     for sec in range(45):
         base = t0_ns + sec * 1_000_000_000
-        # Healthcheck & Redis & PG keepalive every 250ms
         for sub in range(4):
             ts = base + sub * 250_000_000
             w.add_slice(threads["gw-healthcheck"], ts, 1_200_000, "http.get(/healthz)", "net")
@@ -290,7 +338,6 @@ def generate_complex_pftrace(trace_path: pathlib.Path) -> None:
             w.add_slice(threads["redis-heartbeat-1"], ts + 12_000_000, 900_000, "sentinel.info", "cache")
             w.add_slice(threads["settle-pg-keepalive"], ts + 20_000_000, 2_100_000, "pg.SELECT_1", "db")
             w.add_slice(threads["fx-cache-warmer"], ts + 30_000_000, 3_500_000, "fx.cache_stat", "cache")
-        # Metrics flush & rule sync & GC pauses every second
         w.add_slice(threads["gw-metrics-flush"], base + 100_000_000, 8_000_000, "prometheus.scrape_collect", "telemetry")
         w.add_slice(threads["risk-metrics-pusher"], base + 150_000_000, 9_500_000, "metrics.export_batch", "telemetry")
         w.add_slice(threads["risk-rule-sync"], base + 200_000_000, 12_000_000, "rules.poll_snapshot", "config")
@@ -299,22 +346,15 @@ def generate_complex_pftrace(trace_path: pathlib.Path) -> None:
         if sec % 5 == 0:
             w.add_slice(threads["settle-recon-cron"], base + 500_000_000, 42_000_000, "recon.checkpoint_scan", "batch")
 
-        # Healthy baseline requests across gw, risk, settle, pgbouncer (hundreds per sec -> ~9,000+ slices!)
         if sec < 15 or sec >= 36:
             for k in range(35):
                 ts = base + k * 27_000_000 + rng.randint(0, 4_000_000)
-                gw_t = threads[f"gw-http-worker-{k % 4}"]
-                rw_t = threads[f"risk-worker-{k % 8}"]
-                sw_t = threads[f"settle-dispatcher-{k % 6}"]
-                pg_t = threads[f"pgb-pool-{k % 3}"]
-                w.add_slice(gw_t, ts, 14_000_000, "GatewayHandler::handle", "http", {"status": 200})
-                w.add_slice(rw_t, ts + 2_000_000, 6_000_000, "RiskEngine::evaluate_tx", "risk", {"pair": "USD_CNY"})
-                w.add_slice(rw_t, ts + 2_500_000, 1_200_000, "RiskEngine::get_fx_rate", "risk")
-                w.add_slice(sw_t, ts + 9_000_000, 4_500_000, "SettlementDispatcher::submit", "settlement")
-                w.add_slice(pg_t, ts + 10_000_000, 2_500_000, "pg.INSERT_settlement", "db")
+                w.add_slice(threads[f"gw-http-worker-{k % 4}"], ts, 14_000_000, "GatewayHandler::handle", "http", {"status": 200})
+                w.add_slice(threads[f"risk-worker-{k % 8}"], ts + 2_000_000, 6_000_000, "RiskEngine::evaluate_tx", "risk", {"pair": "USD_CNY"})
+                w.add_slice(threads[f"risk-worker-{k % 8}"], ts + 2_500_000, 1_200_000, "RiskEngine::get_fx_rate", "risk")
+                w.add_slice(threads[f"settle-dispatcher-{k % 6}"], ts + 9_000_000, 4_500_000, "SettlementDispatcher::submit", "settlement")
+                w.add_slice(threads[f"pgb-pool-{k % 3}"], ts + 10_000_000, 2_500_000, "pg.INSERT_settlement", "db")
 
-    # 2) Fault window (sec 15..35, corresponding to 14:14:00+08:00 onset):
-    # risk-engine workers serialize one-by-one on Mutex::acquire(_rule_cache_lock) while calling FxClient::refresh_fx_quote!
     lock_free_ns = t0_ns + 15 * 1_000_000_000
     for idx in range(42):
         arr_ns = t0_ns + 15 * 1_000_000_000 + idx * 45_000_000
@@ -324,38 +364,107 @@ def generate_complex_pftrace(trace_path: pathlib.Path) -> None:
         fx_t = threads[f"fx-handler-{idx % 3}"]
         pg_t = threads[f"pgb-pool-{idx % 3}"]
 
-        acq_ns = max(arr_ns + 400_000, lock_free_ns)
-        wait_ns = acq_ns - arr_ns
-        if wait_ns > 500_000:
-            w.add_slice(rw_t, arr_ns + 300_000, wait_ns - 300_000, "Mutex::wait", "lock", {"mutex": "_rule_cache_lock"})
+        start_hold = max(arr_ns, lock_free_ns)
+        wait_ns = start_hold - arr_ns
+        hold_ns = 480_000_000 + rng.randint(10_000_000, 75_000_000)
+        lock_free_ns = start_hold + hold_ns
 
-        hold_ns = 465_000_000  # 465ms held under lock during 3x 503 retries
-        total_eval_ns = wait_ns + hold_ns + 3_000_000
-        w.add_slice(rw_t, arr_ns, total_eval_ns, "RiskEngine::evaluate_tx", "risk", {"tx_id": f"TX-20261124-{idx+1:04d}"})
-        w.add_slice(rw_t, acq_ns, hold_ns, "acquire_rule_lock", "lock", {"mutex": "_rule_cache_lock"})
-        w.add_slice(rw_t, acq_ns + 200_000, hold_ns - 400_000, "FxClient::refresh_fx_quote", "risk", {"pair": "USD_CNY"})
-        for r in range(3):
-            ht = acq_ns + 1_000_000 + r * 153_000_000
-            w.add_slice(rw_t, ht, 148_000_000, "fx_quote_http_retry", "net", {"attempt": r + 1, "http_status": 503})
-            w.add_slice(fx_t, ht + 2_000_000, 140_000_000, "FxProxy::upstream_quote", "net", {"status": 503})
-
-        w.add_slice(rw_t, acq_ns + hold_ns + 200_000, 1_800_000, "RiskEngine::generate_idempotency_key", "risk", {"idem_prefix": f"MCH_VIP_001:2026-11-24T14:14"})
-        lock_free_ns = acq_ns + hold_ns
-
-        # Downstream settlement-worker & pg-bouncer contention & gateway 504s
-        if idx >= 6:
-            st_ns = arr_ns + wait_ns + 20_000_000
-            w.add_slice(sw_t, st_ns, 380_000_000, "SettlementDispatcher::upsert_batch", "settlement", {"pool_active": 168})
-            w.add_slice(pg_t, st_ns + 10_000_000, 350_000_000, "pg.row_lock_wait", "db", {"max_connections": 180})
-        if idx >= 12:
-            w.add_slice(gw_t, arr_ns, min(2_000_000_000, total_eval_ns), "GatewayHandler::upstream_timeout", "http", {"status": 504})
+        w.add_slice(gw_t, arr_ns, wait_ns + hold_ns + 25_000_000, "GatewayHandler::handle", "http", {"status": 504})
+        w.add_slice(rw_t, arr_ns, wait_ns + hold_ns, "RiskEngine::evaluate_tx", "risk", {"pair": "HKD_CNY" if idx % 2 else "USD_CNY"})
+        if wait_ns > 0:
+            w.add_slice(rw_t, arr_ns, wait_ns, "Mutex::wait(_rule_cache_lock)", "lock", {"contended": True})
+        w.add_slice(rw_t, start_hold, hold_ns, "acquire_rule_lock", "lock", {"lock": "_rule_cache_lock", "blocking_io": True})
+        w.add_slice(rw_t, start_hold + 2_000_000, hold_ns - 4_000_000, "fx_quote_http_retry", "net", {"http_status": 503, "retries": 3})
+        w.add_slice(fx_t, start_hold + 4_000_000, hold_ns - 8_000_000, "FxUpstream::quote_timeout", "net", {"upstream": "fx-provider"})
+        w.add_slice(sw_t, arr_ns + 200_000_000, 320_000_000, "SettlementDispatcher::retry_storm", "settlement", {"attempt": 2})
+        w.add_slice(pg_t, arr_ns + 210_000_000, 290_000_000, "pg.LOCK_WAIT_idempotency", "db", {"active_conns": 168})
 
     trace_path.write_bytes(w.to_bytes())
 
 
+def generate_telemetry_series(out_path: pathlib.Path) -> None:
+    """Generate 5-second resolution telemetry (14:00-18:00 UTC+8) for Portal drill-down PNGs."""
+    start_dt = dt.datetime(2026, 11, 24, 14, 0, 0, tzinfo=TZ_UTC8)
+    end_dt = dt.datetime(2026, 11, 24, 18, 0, 0, tzinfo=TZ_UTC8)
+    t_r2 = dt.datetime(2026, 11, 24, 14, 13, 25, tzinfo=TZ_UTC8)
+    t_r3 = dt.datetime(2026, 11, 24, 14, 13, 40, tzinfo=TZ_UTC8)
+    t_s1 = dt.datetime(2026, 11, 24, 14, 14, 50, tzinfo=TZ_UTC8)
+    t_r4_s = dt.datetime(2026, 11, 24, 14, 15, 15, tzinfo=TZ_UTC8)
+    t_r4_e = dt.datetime(2026, 11, 24, 14, 15, 40, tzinfo=TZ_UTC8)
+    t_mit = dt.datetime(2026, 11, 24, 16, 45, 0, tzinfo=TZ_UTC8)
+
+    rng = random.Random(2026112405)
+    timestamps = []
+    series = {k: [] for k in [
+        "risk-node-01", "risk-node-02", "risk-node-03", "risk-node-04",
+        "risk-node-05", "settle-node-01", "settle-node-02", "gw-edge-01",
+    ]}
+
+    cur = start_dt
+    while cur <= end_dt:
+        timestamps.append(cur.strftime("%H:%M:%S"))
+        series["risk-node-01"].append(round(84 + rng.uniform(-5, 6), 1))
+        series["risk-node-05"].append(round(88 + rng.uniform(-5, 6), 1))
+        series["settle-node-02"].append(round(94 + rng.uniform(-6, 7), 1))
+
+        if cur < t_r2:
+            v2 = 86 + rng.uniform(-5, 6)
+        elif cur < t_mit:
+            sec_since = (cur - t_r2).total_seconds()
+            burst = 2300.0 * math.exp(-((sec_since - 45.0) / 35.0) ** 2)
+            v2 = 1520.0 + burst + rng.uniform(-45, 55)
+        else:
+            v2 = 245 + rng.uniform(-15, 20)
+        series["risk-node-02"].append(round(v2, 1))
+
+        if cur < t_r3:
+            v3 = 85 + rng.uniform(-5, 6)
+        elif cur < t_mit:
+            sec_since = (cur - t_r3).total_seconds()
+            burst = 2580.0 * math.exp(-((sec_since - 40.0) / 32.0) ** 2)
+            v3 = 1480.0 + burst + rng.uniform(-45, 55)
+        else:
+            v3 = 238 + rng.uniform(-15, 20)
+        series["risk-node-03"].append(round(v3, 1))
+
+        if cur < t_s1:
+            vs1 = 108 + rng.uniform(-8, 10)
+        elif cur < t_mit:
+            ramp = min(1.0, (cur - t_s1).total_seconds() / 180.0)
+            vs1 = 150 + ramp * 1240 + rng.uniform(-35, 45)
+        else:
+            vs1 = 185 + rng.uniform(-15, 18)
+        series["settle-node-01"].append(round(vs1, 1))
+
+        if t_r4_s <= cur <= t_r4_e:
+            v4 = 1820 + rng.uniform(-90, 140)
+        elif t_r4_e < cur < t_r4_e + dt.timedelta(seconds=20):
+            v4 = 420 + rng.uniform(-40, 40)
+        else:
+            v4 = 91 + rng.uniform(-5, 7)
+        series["risk-node-04"].append(round(v4, 1))
+
+        if cur < t_r4_s:
+            vgw = 135 + rng.uniform(-8, 12)
+        elif cur < t_mit:
+            ramp = min(1.0, (cur - t_r4_s).total_seconds() / 240.0)
+            vgw = 240 + ramp * 2100 + rng.uniform(-60, 80)
+        else:
+            vgw = 265 + rng.uniform(-15, 20)
+        series["gw-edge-01"].append(round(vgw, 1))
+
+        cur += dt.timedelta(seconds=5)
+
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(json.dumps({
+        "start_utc8": "2026-11-24T14:00:00+08:00",
+        "step_sec": 5,
+        "timestamps": timestamps,
+        "series": series,
+    }), encoding="utf-8")
+
+
 def generate_openmetrics(prom_file: pathlib.Path) -> None:
-    """7-panel multi-noise Prometheus OpenMetrics covering 2026-11-24 12:00..18:00 UTC+8."""
-    prom_file.parent.mkdir(parents=True, exist_ok=True)
     start_ts = int(dt.datetime(2026, 11, 24, 12, 0, 0, tzinfo=TZ_UTC8).timestamp())
     end_ts = int(dt.datetime(2026, 11, 24, 18, 0, 0, tzinfo=TZ_UTC8).timestamp())
 
@@ -378,72 +487,56 @@ def generate_openmetrics(prom_file: pathlib.Path) -> None:
     rng = random.Random(20261124)
     for ts in range(start_ts, end_ts + 1, 60):
         cron_noise = 180.0 if abs(ts - t_cron_blip) <= 120 else 0.0
-
-        # risk-engine spikes FIRST at 14:14 (specifically risk-node-02 & risk-node-03; canary risk-node-01 stays healthy!)
         if ts < t_risk_onset:
             risk_p99 = 85 + cron_noise * 0.2 + rng.uniform(-8, 10)
-            n1_p99 = 82 + rng.uniform(-5, 6)
-            n2_p99 = 86 + rng.uniform(-5, 6)
-            n3_p99 = 84 + rng.uniform(-5, 6)
-            risk_err = 0.1
-            mutex_wait = 2.0 + rng.uniform(0, 1.5)
+            n1_p99, n2_p99, n3_p99 = 82 + rng.uniform(-5, 6), 86 + rng.uniform(-5, 6), 84 + rng.uniform(-5, 6)
+            n4_p99, n5_p99 = 91 + rng.uniform(-5, 6), 88 + rng.uniform(-5, 6)
+            risk_err, mutex_wait = 0.1, 2.0 + rng.uniform(0, 1.5)
         elif ts < t_mitigate:
             ramp = min(1.0, (ts - t_risk_onset) / 300.0)
             risk_p99 = 120 + ramp * 1450 + rng.uniform(-40, 80)
             n1_p99 = 88 + rng.uniform(-6, 8)
             n2_p99 = 135 + ramp * 1510 + rng.uniform(-30, 60)
             n3_p99 = 130 + ramp * 1470 + rng.uniform(-30, 60)
+            n4_p99 = 180.0 if ts == t_risk_onset + 60 else 92 + rng.uniform(-5, 6)
+            n5_p99 = 89 + rng.uniform(-5, 6)
             risk_err = 1.5 + ramp * 14.0
             mutex_wait = 45 + ramp * 470 + rng.uniform(-15, 25)
         else:
-            risk_p99 = 240 + rng.uniform(-20, 30)
-            n1_p99 = 85 + rng.uniform(-5, 6)
-            n2_p99 = 260 + rng.uniform(-20, 25)
-            n3_p99 = 250 + rng.uniform(-20, 25)
-            risk_err = 0.8
-            mutex_wait = 12 + rng.uniform(0, 5)
+            risk_p99, n1_p99, n2_p99, n3_p99 = 240 + rng.uniform(-20, 30), 85 + rng.uniform(-5, 6), 260 + rng.uniform(-20, 25), 250 + rng.uniform(-20, 25)
+            n4_p99, n5_p99 = 91 + rng.uniform(-5, 6), 88 + rng.uniform(-5, 6)
+            risk_err, mutex_wait = 0.8, 12 + rng.uniform(0, 5)
 
         if ts < t_settle_onset:
-            settle_p99 = 110 + cron_noise + rng.uniform(-10, 12)
-            settle_err = 0.05
-            pg_conns = 42 + rng.randint(-3, 4)
+            settle_p99, settle_err, pg_conns = 110 + cron_noise + rng.uniform(-10, 12), 0.05, 42 + rng.randint(-3, 4)
         elif ts < t_mitigate:
             ramp = min(1.0, (ts - t_settle_onset) / 360.0)
-            settle_p99 = 160 + ramp * 1680 + rng.uniform(-50, 90)
-            settle_err = 1.0 + ramp * 18.0
-            pg_conns = int(50 + ramp * 118)
+            settle_p99, settle_err, pg_conns = 160 + ramp * 1680 + rng.uniform(-50, 90), 1.0 + ramp * 18.0, int(50 + ramp * 118)
         else:
-            settle_p99 = 190 + rng.uniform(-15, 20)
-            settle_err = 0.4
-            pg_conns = 58 + rng.randint(-4, 4)
+            settle_p99, settle_err, pg_conns = 190 + rng.uniform(-15, 20), 0.4, 58 + rng.randint(-4, 4)
 
         if ts < t_gw_onset:
-            gw_p99 = 140 + cron_noise * 0.4 + rng.uniform(-10, 15)
-            gw_err = 0.1
+            gw_p99, gw_err = 140 + cron_noise * 0.4 + rng.uniform(-10, 15), 0.1
         elif ts < t_mitigate:
             ramp = min(1.0, (ts - t_gw_onset) / 240.0)
-            gw_p99 = 250 + ramp * 2400 + rng.uniform(-80, 120)
-            gw_err = 2.0 + ramp * 34.0
+            gw_p99, gw_err = 250 + ramp * 2400 + rng.uniform(-80, 120), 2.0 + ramp * 34.0
         else:
-            gw_p99 = 280 + rng.uniform(-20, 25)
-            gw_err = 0.5
+            gw_p99, gw_err = 280 + rng.uniform(-20, 25), 0.5
 
         lines.append(f'clearing_http_request_duration_p99_ms{{service="risk-engine"}} {risk_p99:.2f} {ts}')
         lines.append(f'clearing_http_request_duration_p99_ms{{service="settlement-worker"}} {settle_p99:.2f} {ts}')
         lines.append(f'clearing_http_request_duration_p99_ms{{service="api-gateway"}} {gw_p99:.2f} {ts}')
-
         lines.append(f'clearing_node_p99_latency_ms{{node="risk-node-01",role="canary"}} {n1_p99:.2f} {ts}')
         lines.append(f'clearing_node_p99_latency_ms{{node="risk-node-02",role="worker"}} {n2_p99:.2f} {ts}')
         lines.append(f'clearing_node_p99_latency_ms{{node="risk-node-03",role="worker"}} {n3_p99:.2f} {ts}')
+        lines.append(f'clearing_node_p99_latency_ms{{node="risk-node-04",role="worker"}} {n4_p99:.2f} {ts}')
+        lines.append(f'clearing_node_p99_latency_ms{{node="risk-node-05",role="worker"}} {n5_p99:.2f} {ts}')
         lines.append(f'clearing_node_p99_latency_ms{{node="settle-node-01",role="primary"}} {settle_p99:.2f} {ts}')
-
         lines.append(f'clearing_http_error_rate_percent{{service="risk-engine"}} {risk_err:.2f} {ts}')
         lines.append(f'clearing_http_error_rate_percent{{service="settlement-worker"}} {settle_err:.2f} {ts}')
         lines.append(f'clearing_http_error_rate_percent{{service="api-gateway"}} {gw_err:.2f} {ts}')
-
         lines.append(f'clearing_mutex_contention_wait_ms{{service="risk-engine",span="acquire_rule_lock"}} {mutex_wait:.2f} {ts}')
         lines.append(f'clearing_pg_active_connections{{cluster="pg-primary-01"}} {pg_conns} {ts}')
-
         lines.append(f'clearing_deploy_event{{service="api-gateway",version="v3.1.0"}} {1 if ts == t_benign_deploy else 0} {ts}')
         lines.append(f'clearing_deploy_event{{service="risk-engine",version="v2.8.4"}} {1 if ts == t_deploy else 0} {ts}')
 
@@ -453,7 +546,7 @@ def generate_openmetrics(prom_file: pathlib.Path) -> None:
 
 def generate_logs_and_batches(data_dir: pathlib.Path) -> dict:
     """Generate gateway_requests.jsonl and settlement_batches_raw.csv and compute truth
-    including MCH_VIP_003 Clause 4.2 (00:00-00:59 UTC+8 maintenance exemption)!
+    including MCH_VIP_003 Clause 4.2 exemption AND Mutex Highest-Only non-stacking!
     """
     data_dir.mkdir(parents=True, exist_ok=True)
     rng = random.Random(20261124)
@@ -479,7 +572,6 @@ def generate_logs_and_batches(data_dir: pathlib.Path) -> dict:
 
             is_maint_exempt = False
             if mode == "vip_tz_edge" and i < 3:
-                # 2026-11-23T16:30:00Z -> 2026-11-24T00:30:00+08:00 (counts in settled_amount_cny, EXEMPT from SLA breach!)
                 base_dt = dt.datetime(2026, 11, 24, 0, 30 + i, 0, tzinfo=TZ_UTC8)
                 ts_str = base_dt.astimezone(TZ_UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
                 is_maint_exempt = True
@@ -524,7 +616,6 @@ def generate_logs_and_batches(data_dir: pathlib.Path) -> dict:
                     final_status, final_lat = "SETTLED", rng.randint(150, 600)
             else:
                 if i < 10:
-                    # Note: i=0,1,2 are in 00:30-00:32 UTC+8 (high latency 850ms, but EXEMPT per Clause 4.2!)
                     final_status, final_lat = "SETTLED", rng.randint(640, 960)
                 elif i < 14:
                     final_status, final_lat = "FAILED", 1900
@@ -616,19 +707,31 @@ def generate_logs_and_batches(data_dir: pathlib.Path) -> dict:
     for batch_id, merchant_id, currency, *_ in batch_specs:
         tier = MERCHANTS[merchant_id]["tier"]
         threshold = 600 if tier == "VIP_T1" else 1500
-        rate = Decimal("0.025") if tier == "VIP_T1" else Decimal("0.005")
+        sla_rate = Decimal("0.025") if tier == "VIP_T1" else Decimal("0.005")
+        dup_rate = Decimal("0.030") if tier == "VIP_T1" else Decimal("0.010")
         cap = Decimal("5000.00") if tier == "VIP_T1" else None
         fx = FX_RATES[currency]
 
         b_txs = [v for v in tx_truth.values() if v["batch_id"] == batch_id]
-        total_cny = sum(q2(v["amount_orig"] * fx) for v in b_txs)
-        breached = [
-            v for v in b_txs
-            if (not v["is_maint_exempt"])
-            and (v["final_status"] in ("TIMEOUT", "504", "FAILED") or v["final_latency_ms"] > threshold)
-        ]
-        dup_cnt = sum(1 for v in b_txs if v["is_dup_risk"])
-        raw_pen = sum(q2(v["amount_orig"] * fx) * rate for v in breached)
+        total_cny = Decimal("0.00")
+        breached_cnt = 0
+        dup_cnt = 0
+        raw_pen = Decimal("0.00")
+
+        for v in b_txs:
+            tx_cny = q2(v["amount_orig"] * fx)
+            total_cny += tx_cny
+            is_breached = (not v["is_maint_exempt"]) and (
+                v["final_status"] in ("TIMEOUT", "504", "FAILED") or v["final_latency_ms"] > threshold
+            )
+            if is_breached:
+                breached_cnt += 1
+            if v["is_dup_risk"]:
+                dup_cnt += 1
+            sla_pen = (tx_cny * sla_rate) if is_breached else Decimal("0.00")
+            dup_comp = (tx_cny * dup_rate) if v["is_dup_risk"] else Decimal("0.00")
+            raw_pen += max(sla_pen, dup_comp)
+
         pen = q2(raw_pen)
         if cap is not None and pen > cap:
             pen = cap
@@ -639,7 +742,7 @@ def generate_logs_and_batches(data_dir: pathlib.Path) -> dict:
             "tier": tier,
             "currency": currency,
             "settled_amount_cny": float(q2(total_cny)),
-            "breached_tx_count": len(breached),
+            "breached_tx_count": breached_cnt,
             "duplicate_risk_count": dup_cnt,
             "penalty_cny": float(pen),
         }
@@ -647,12 +750,23 @@ def generate_logs_and_batches(data_dir: pathlib.Path) -> dict:
     total_pen = q2(sum(Decimal(str(b["penalty_cny"])) for b in batch_results.values()))
     return {
         "root_cause_service": "risk-engine",
-        "onset_time_utc8": "2026-11-24T14:14:00+08:00",
+        "first_onset_node": "risk-node-02",
+        "onset_time_utc8": "2026-11-24T14:13:25+08:00",
+        "transient_recovered_node": "risk-node-04",
         "culprit_version": "v2.8.4",
         "bottleneck_span": "acquire_rule_lock",
         "isolated_nodes": ["risk-node-02", "risk-node-03"],
-        "active_nodes": ["risk-node-01", "settle-node-01", "settle-node-02", "pg-primary-01"],
-        "freeze_window_utc8": ["17:30", "19:30"],
+        "active_nodes": [
+            "gw-edge-01", "gw-edge-02", "settle-node-01", "settle-node-02",
+            "risk-node-01", "risk-node-04", "risk-node-05", "pg-primary-01",
+        ],
+        "rebalance_constraints": {
+            "active_risk_nodes": {"risk-node-01": 30, "risk-node-04": 45, "risk-node-05": 55},
+            "isolated_zero_nodes": ["risk-node-02", "risk-node-03"],
+            "total_weight": 100,
+        },
+        "freeze_window_initial_utc8": ["17:30", "19:30"],
+        "freeze_window_extended_utc8": ["17:30", "20:00"],
         "batches": batch_results,
         "total_penalty_cny": float(total_pen),
         "duplicate_risk_tx_ids": dup_risk_tx_ids,
@@ -674,11 +788,12 @@ def main():
     trace_dir.mkdir(parents=True, exist_ok=True)
     generate_visual_and_contract_docs(sd, ws / "contracts")
     generate_complex_pftrace(trace_dir / "clearing_incident.pftrace")
+    generate_telemetry_series(sd / "telemetry_series.json")
     generate_openmetrics(sd / "metrics.openmetrics")
     truth = generate_logs_and_batches(ws / "data")
     pathlib.Path(args.truth_path).parent.mkdir(parents=True, exist_ok=True)
     pathlib.Path(args.truth_path).write_text(json.dumps(truth, indent=2, ensure_ascii=False), encoding="utf-8")
-    print("v2 generated! Total penalty CNY:", truth["total_penalty_cny"])
+    print("v0.5.0 generated! Total penalty CNY:", truth["total_penalty_cny"])
     print("Batches:", json.dumps(truth["batches"], ensure_ascii=False))
     print("Dup risk tx_ids:", truth["duplicate_risk_tx_ids"])
 

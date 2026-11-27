@@ -3,8 +3,8 @@ artifacts = ["/workspace/output", "/var/lib/clearing-portal"]
 
 [task]
 name = "clearing-core/gateway-cascade-audit"
-version = "0.4.0"
-description = "金融清结算与风控网关级联故障定位、Gitea热修、动态金丝雀回归验证与多模态SLA合规审计闭环（浏览器操作边界强化版）"
+version = "0.5.0"
+description = "金融清结算与风控网关级联故障定位、时序钻取与视觉拓扑切流配平、跨模块Gitea热修、CAB动态复核闭环与真多模态SLA合规审计"
 
 [metadata]
 delivery_role = "cua-task"

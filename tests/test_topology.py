@@ -8,7 +8,6 @@ from unittest.mock import patch
 
 from grade import InfraError, score_cmdb
 
-
 SERVICES = pathlib.Path(__file__).resolve().parents[1] / "environment"
 sys.path[:0] = [str(SERVICES / "services/portal"), str(SERVICES / "seed")]
 
@@ -25,7 +24,10 @@ class TopologyIsolationTest(unittest.TestCase):
         shutil.copyfile(self.database, self.baseline)
         self.truth = {
             "isolated_nodes": ["risk-node-02", "risk-node-03"],
-            "active_nodes": ["risk-node-01", "settle-node-01", "settle-node-02", "pg-primary-01"],
+            "active_nodes": [
+                "gw-edge-01", "gw-edge-02", "settle-node-01", "settle-node-02",
+                "risk-node-01", "risk-node-04", "risk-node-05", "pg-primary-01",
+            ],
         }
 
     def set_status(self, node_name, status):
@@ -33,30 +35,35 @@ class TopologyIsolationTest(unittest.TestCase):
 
     def score(self):
         with closing(portal.get_conn()) as conn:
-            return score_cmdb(conn, self.baseline, self.truth)[0]
+            return score_cmdb(conn, self.baseline, self.truth)
 
     def test_no_action_does_not_score(self):
-        self.assertEqual(self.score(), 0)
+        sc, _, prot = self.score()
+        self.assertEqual(sc, 0)
+        self.assertTrue(prot)
 
-    def test_two_persisted_isolations_and_untouched_non_targets_get_full_credit(self):
+    def test_rebalancing_active_weights_does_not_violate_status_protection(self):
         for node in self.truth["isolated_nodes"]:
             self.set_status(node, "ISOLATED")
-        # Retrying the same write leaves the audit count unchanged.
-        self.set_status("risk-node-02", "ISOLATED")
-        nodes = {row["node_name"]: row for row in portal.list_nodes("sre_oncall")["nodes"]}
-        self.assertEqual(nodes["risk-node-02"]["status_change_count"], 1)
-        self.assertEqual(nodes["settle-node-01"]["status_change_count"], 0)
-        self.assertEqual(self.score(), 1)
+        portal.update_traffic_weights(
+            portal.TrafficWeightsUpdate(weights={
+                "risk-node-01": 20, "risk-node-02": 0, "risk-node-03": 0,
+                "risk-node-04": 40, "risk-node-05": 40,
+            }),
+            "sre_oncall",
+        )
+        sc, _, prot = self.score()
+        self.assertEqual(sc, 1.0)
+        self.assertTrue(prot)
 
     def test_reversing_a_wrong_isolation_still_loses_protection_credit(self):
         for node in self.truth["isolated_nodes"]:
             self.set_status(node, "ISOLATED")
-        self.set_status("settle-node-01", "ISOLATED")
-        self.set_status("settle-node-01", "ACTIVE")
-        nodes = {row["node_name"]: row for row in portal.list_nodes("sre_oncall")["nodes"]}
-        self.assertEqual(nodes["settle-node-01"]["status"], "ACTIVE")
-        self.assertEqual(nodes["settle-node-01"]["status_change_count"], 2)
-        self.assertEqual(self.score(), 0.5)
+        self.set_status("risk-node-04", "ISOLATED")
+        self.set_status("risk-node-04", "ACTIVE")
+        sc, _, prot = self.score()
+        self.assertFalse(prot)
+        self.assertEqual(sc, 0.5)
 
     def test_no_snapshot_is_an_infrastructure_error(self):
         self.baseline.unlink()

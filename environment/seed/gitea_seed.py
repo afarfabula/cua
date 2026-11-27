@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""Seed Gitea org `clearing-core` with `risk-engine` (buggy v2.8.4 + trap PR #1),
+"""Seed Gitea org `clearing-core` with `risk-engine` (buggy v2.8.4 + realistic trap PR #1),
 `settlement-worker`, and `api-gateway`.
 """
 import argparse
 import json
 import os
 import pathlib
-import shutil
 import subprocess
 import tempfile
 import time
@@ -73,11 +72,9 @@ def api_req(method, path, auth=(ADMIN_USER, ADMIN_PASS), json_body=None):
 
 
 def ensure_org_and_repo(repo_name: str, desc: str):
-    # Ensure org
     r = requests.get(f"{GITEA_URL}/api/v1/orgs/{ORG_NAME}", auth=(ADMIN_USER, ADMIN_PASS), timeout=10)
     if r.status_code == 404:
         api_req("POST", "/orgs", json_body={"username": ORG_NAME, "full_name": "Clearing Core Services", "visibility": "public"})
-    # Ensure dev_li in org owners/members so they can open PR
     teams = api_req("GET", f"/orgs/{ORG_NAME}/teams")
     owners_id = next(t["id"] for t in teams if t["name"].lower() == "owners")
     requests.put(f"{GITEA_URL}/api/v1/teams/{owners_id}/members/{DEV_USER}", auth=(ADMIN_USER, ADMIN_PASS), timeout=10)
@@ -116,33 +113,70 @@ def init_risk_engine(tmp: pathlib.Path) -> str:
         "pyproject.toml": "[tool.pytest.ini_options]\npythonpath = [\".\"]\n",
         "risk_engine/__init__.py": "",
         "risk_engine/config.py": "DB_POOL_SIZE = 120\nPG_MAX_CONNECTIONS = 180\nFX_CACHE_TTL_SEC = 30.0\nREQUEST_TIMEOUT_SEC = 2.0\n",
-        "risk_engine/fx_client.py": '''import time
+        "risk_engine/fx_client.py": '''import threading
+import time
 
 
 class FxUpstreamError(RuntimeError):
     pass
 
 
+class FxRateLimitError(FxUpstreamError):
+    pass
+
+
 class FxClient:
-    def __init__(self, fetcher=None):
+    """Upstream FX quote client with per-pair concurrent call protection (429 on stampede)."""
+
+    def __init__(self, fetcher=None, max_concurrent_per_pair: int = 1):
         self._fetcher = fetcher or (lambda pair: {"USD_CNY": 7.15, "HKD_CNY": 0.92}.get(pair, 1.0))
+        self.max_concurrent_per_pair = max_concurrent_per_pair
+        self._lock = threading.Lock()
+        self._inflight: dict[str, int] = {}
+        self.call_counts: dict[str, int] = {}
 
     def refresh_fx_quote(self, pair: str) -> float:
-        last_err = None
-        for attempt in range(3):
-            try:
-                return float(self._fetcher(pair))
-            except Exception as exc:
-                last_err = exc
-                time.sleep(0.15 * (attempt + 1))
-        raise FxUpstreamError(f"FX upstream unavailable for {pair}: {last_err}")
+        with self._lock:
+            cur = self._inflight.get(pair, 0) + 1
+            self.call_counts[pair] = self.call_counts.get(pair, 0) + 1
+            if cur > self.max_concurrent_per_pair:
+                raise FxRateLimitError(f"429 Too Many Concurrent FX Requests for {pair}")
+            self._inflight[pair] = cur
+
+        try:
+            last_err = None
+            for attempt in range(3):
+                try:
+                    return float(self._fetcher(pair))
+                except Exception as exc:
+                    last_err = exc
+                    time.sleep(0.15 * (attempt + 1))
+            raise FxUpstreamError(f"FX upstream unavailable for {pair}: {last_err}")
+        finally:
+            with self._lock:
+                self._inflight[pair] = max(0, self._inflight.get(pair, 1) - 1)
 ''',
-        "risk_engine/engine.py": '''import hashlib
-import threading
+        "risk_engine/idempotency.py": '''import hashlib
+
+
+def build_idempotency_key(tx_id: str, merchant_id: str, cycle_time: str) -> str:
+    """Compute deterministic idempotency key for a transaction.
+
+    Contract:
+    - Must distinguish distinct tx_ids occurring within the same minute.
+    - Must remain identical across retry timestamps and equivalent timezone
+      representations (e.g. 'Z' vs '+08:00') for the same (merchant_id, tx_id).
+    """
+    # BUG (v2.8.4): accidentally dropped tx_id and truncated cycle_time to minute!
+    raw = f"{merchant_id}:{cycle_time[:16]}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+''',
+        "risk_engine/engine.py": '''import threading
 import time
 from typing import Dict
 
-from risk_engine.fx_client import FxClient
+from risk_engine.fx_client import FxClient, FxUpstreamError
+from risk_engine.idempotency import build_idempotency_key
 
 
 class RiskEngine:
@@ -156,14 +190,13 @@ class RiskEngine:
         }
 
     def generate_idempotency_key(self, tx_id: str, merchant_id: str, cycle_time: str) -> str:
-        # BUG (v2.8.4): accidentally dropped tx_id and truncated cycle_time to minute!
-        raw = f"{merchant_id}:{cycle_time[:16]}"
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+        return build_idempotency_key(tx_id, merchant_id, cycle_time)
 
     def get_fx_rate(self, pair: str) -> float:
         if pair == "CNY_CNY":
             return 1.0
-        # BUG (v2.8.4): holds _rule_cache_lock while executing blocking HTTP retries!
+        # BUG (v2.8.4): holds _rule_cache_lock across blocking HTTP retries,
+        # lacks per-pair single-flight protection and stale-while-error fallback.
         with self._rule_cache_lock:
             cached = self._fx_cache.get(pair)
             if cached and (time.monotonic() - cached[1]) < self.cache_ttl:
@@ -206,23 +239,74 @@ def test_basic_evaluation():
     run(["git", "remote", "add", "origin", url], cwd=repo_dir)
     run(["git", "push", "-u", "origin", "main", "--tags"], cwd=repo_dir)
 
-    # Trap branch & PR #1 by dev_li
-    run(["git", "checkout", "-b", "hotfix/bump-db-pool"], cwd=repo_dir)
+    # Realistic Trap branch & PR #1 by dev_li:
+    # Passes baseline tests & releases _rule_cache_lock, BUT bumps DB_POOL_SIZE to 220 (>180),
+    # omits per-pair single-flight (causes 429 stampede), and silently returns fake 1.0 for unknown pairs!
+    run(["git", "checkout", "-b", "hotfix/pool-and-lock-mitigation"], cwd=repo_dir)
     run(["git", "config", "user.name", "dev_li"], cwd=repo_dir)
     run(["git", "config", "user.email", "dev-li@clearing.local"], cwd=repo_dir)
     write_files(repo_dir, {
-        "risk_engine/config.py": "DB_POOL_SIZE = 300\nPG_MAX_CONNECTIONS = 180\nFX_CACHE_TTL_SEC = 30.0\nREQUEST_TIMEOUT_SEC = 10.0\n",
+        "risk_engine/config.py": "DB_POOL_SIZE = 220\nPG_MAX_CONNECTIONS = 180\nFX_CACHE_TTL_SEC = 30.0\nREQUEST_TIMEOUT_SEC = 8.0\n",
+        "risk_engine/engine.py": '''import threading
+import time
+from typing import Dict
+
+from risk_engine.fx_client import FxClient
+from risk_engine.idempotency import build_idempotency_key
+
+
+class RiskEngine:
+    def __init__(self, fx_client: FxClient | None = None, cache_ttl: float = 30.0):
+        self.fx_client = fx_client or FxClient()
+        self.cache_ttl = cache_ttl
+        self._rule_cache_lock = threading.Lock()
+        self._fx_cache: Dict[str, tuple[float, float]] = {
+            "USD_CNY": (7.15, time.monotonic()),
+            "HKD_CNY": (0.92, time.monotonic()),
+        }
+
+    def generate_idempotency_key(self, tx_id: str, merchant_id: str, cycle_time: str) -> str:
+        return build_idempotency_key(tx_id, merchant_id, cycle_time)
+
+    def get_fx_rate(self, pair: str) -> float:
+        if pair == "CNY_CNY":
+            return 1.0
+        with self._rule_cache_lock:
+            cached = self._fx_cache.get(pair)
+            if cached and (time.monotonic() - cached[1]) < self.cache_ttl:
+                return cached[0]
+        try:
+            rate = self.fx_client.refresh_fx_quote(pair)
+            with self._rule_cache_lock:
+                self._fx_cache[pair] = (rate, time.monotonic())
+            return rate
+        except Exception:
+            return 1.0
+
+    def evaluate_tx(self, tx_id: str, merchant_id: str, currency: str, amount: float, cycle_time: str) -> dict:
+        pair = f"{currency}_CNY"
+        rate = self.get_fx_rate(pair)
+        amount_cny = round(amount * rate, 2)
+        idem_key = self.generate_idempotency_key(tx_id, merchant_id, cycle_time)
+        risk_pass = amount_cny <= 500000.0
+        return {
+            "tx_id": tx_id,
+            "idempotency_key": idem_key,
+            "amount_cny": amount_cny,
+            "risk_pass": risk_pass,
+        }
+''',
     })
-    run(["git", "add", "risk_engine/config.py"], cwd=repo_dir)
-    run(["git", "commit", "-m", "hotfix: bump db pool size to 300 and timeout to 10s"], cwd=repo_dir)
+    run(["git", "add", "risk_engine/config.py", "risk_engine/engine.py"], cwd=repo_dir)
+    run(["git", "commit", "-m", "hotfix: release rule lock during FX refresh and expand DB pool to 220"], cwd=repo_dir)
     dev_url = auth_clone_url("risk-engine", DEV_USER, DEV_PASS)
     run(["git", "remote", "set-url", "origin", dev_url], cwd=repo_dir)
-    run(["git", "push", "-u", "origin", "hotfix/bump-db-pool"], cwd=repo_dir)
+    run(["git", "push", "-u", "origin", "hotfix/pool-and-lock-mitigation"], cwd=repo_dir)
 
     api_req("POST", f"/repos/{ORG_NAME}/risk-engine/pulls", auth=(DEV_USER, DEV_PASS), json_body={
-        "title": "hotfix: bump db pool size to 300 and timeout to 10s",
-        "body": "Trying to mitigate timeouts by increasing DB_POOL_SIZE to 300 and REQUEST_TIMEOUT_SEC to 10s.",
-        "head": "hotfix/bump-db-pool",
+        "title": "hotfix: release rule lock during FX refresh and expand DB pool to 220",
+        "body": "Mitigates lock contention by moving FX quote HTTP calls outside _rule_cache_lock and raising DB_POOL_SIZE from 120 to 220 with 8s timeout. Existing unit tests pass.",
+        "head": "hotfix/pool-and-lock-mitigation",
         "base": "main",
     })
     return main_sha

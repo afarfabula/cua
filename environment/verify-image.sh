@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Verify all 6 services + Perfetto CLI + v2 multimodal artifacts and permission isolation
+# Verify all 6 services + Perfetto CLI + v0.5.0 multimodal artifacts and permission isolation
 for url in \
   http://127.0.0.1:3000/api/health \
   http://127.0.0.1:9001/ \
@@ -15,21 +15,23 @@ done
 
 test -x /usr/local/bin/trace_processor_shell
 test -s /opt/services/traces/clearing_incident.pftrace
-# agent must NOT be able to read trace files directly
 if su -s /bin/bash agent -c "test -r /opt/services/traces/clearing_incident.pftrace"; then
   echo "SECURITY_ERROR: agent can read trace file directly" >&2
   exit 1
 fi
+
 test -s /workspace/contracts/vip_merchant_framework_2026.pdf
 test -s /opt/services/seed/sla_corridor_matrix.png
+test -s /opt/services/seed/sla_legend_appendix.png
 test -s /opt/services/seed/dba_pg_lock_graph.png
 test -s /opt/services/seed/compliance_errata_20261124.pdf
+test -s /opt/services/seed/telemetry_series.json
 
-# Confirm the service can read its files while the task user cannot read backend databases.
+# Confirm service files & internal configs are unreadable by agent
 su -s /bin/bash gitea -c "test -r /var/lib/gitea/gitea.db && test -r /etc/gitea/app.ini"
 if su -s /bin/bash agent -c "test -r /opt/services/ground_truth.json ||
   test -r /var/lib/clearing-portal/portal.db || test -r /var/lib/gitea/gitea.db ||
-  test -r /etc/gitea/app.ini"; then
+  test -r /etc/gitea/app.ini || test -r /etc/supervisor/conf.d/clearing.conf"; then
   echo "SECURITY_ERROR: agent can read protected backend files" >&2
   exit 1
 fi

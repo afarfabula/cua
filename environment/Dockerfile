@@ -107,7 +107,8 @@ RUN bash /opt/services/initialize-state.sh
 # Isolate backend DBs, seed truth, and service internals from agent user
 RUN mkdir -p /workspace/output \
     && chown -R agent:agent /workspace \
-    && chmod 700 /opt/services /var/lib/clearing-portal /var/lib/gitea /var/lib/mailpit
+    && chmod 700 /opt/services /var/lib/clearing-portal /var/lib/gitea /var/lib/mailpit /etc/grafana /etc/prometheus \
+    && chmod 600 /etc/supervisor/conf.d/clearing.conf
 
 ENTRYPOINT ["/opt/services/entrypoint.sh"]
 CMD ["sleep", "infinity"]

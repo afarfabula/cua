@@ -1,12 +1,6 @@
 #!/usr/bin/env python3
-"""v0.4.1 Reference solution — real browser UI interactions via root Chromium CDP.
-
-All Portal operations use button clicks and form fills (not fetch API calls).
-Gitea PR is created and merged via the web UI. Grafana curves and Perfetto
-spans are read from the DOM.
-
-Terminal: git clone/push to branch, pytest, SLA calculation, output files, email.
-Browser (Playwright → CDP :9222): Gitea login+PR+merge, Portal UI clicks, Grafana read, Perfetto search.
+"""v0.5.0 Reference solution — full browser CDP workflow + single-flight SWE fix +
+traffic rebalancing + CAB dynamic revision loop + Mutex SLA audit.
 """
 import csv
 import datetime as dt
@@ -34,8 +28,7 @@ WORKSPACE_DIR = pathlib.Path(os.environ.get("WORKSPACE_DIR", "/workspace"))
 OUTPUT_DIR = WORKSPACE_DIR / "output"
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 BRANCH = "hotfix/inc-20261124-rule-lock-idempotency"
-UI_TO = 8000
-CANARY_TO = 90000
+UI_TO = 10000
 
 
 def q2(v: Decimal) -> Decimal:
@@ -54,14 +47,13 @@ def _connect_cdp(playwright, endpoint, retries=10, delay=2):
     raise RuntimeError("CDP exhausted")
 
 
-# ── Phase 1: Terminal — git clone, fix, push to BRANCH (not main) ──
+# ── Phase 1: Terminal — git clone, fix 3-module risk-engine, push to main ──
 
 fix_sha = None
 clone_url = None
 with tempfile.TemporaryDirectory() as td:
     parsed = urllib.parse.urlparse(GITEA)
     clone_url = f"{parsed.scheme}://sre_oncall:{urllib.parse.quote('Clearing!2026', safe='')}@{parsed.netloc}/clearing-core/risk-engine.git"
-    # Wait for Gitea to be ready (retry clone up to 5 times)
     for attempt in range(5):
         try:
             subprocess.run(["git", "clone", clone_url, td], check=True, timeout=20)
@@ -74,12 +66,21 @@ with tempfile.TemporaryDirectory() as td:
     subprocess.run(["git", "config", "user.name", "sre_oncall"], cwd=td, check=True)
     subprocess.run(["git", "config", "user.email", "sre-oncall@clearing.local"], cwd=td, check=True)
 
-    (pathlib.Path(td) / "risk_engine" / "engine.py").write_text('''import hashlib
-import threading
+    (pathlib.Path(td) / "risk_engine" / "idempotency.py").write_text('''import hashlib
+
+
+def build_idempotency_key(tx_id: str, merchant_id: str, cycle_time: str) -> str:
+    """Deterministic key bound to (merchant_id, tx_id), invariant across retries and TZ formats."""
+    raw = f"{merchant_id}:{tx_id}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+''', encoding="utf-8")
+
+    (pathlib.Path(td) / "risk_engine" / "engine.py").write_text('''import threading
 import time
 from typing import Dict
 
 from risk_engine.fx_client import FxClient
+from risk_engine.idempotency import build_idempotency_key
 
 
 class RiskEngine:
@@ -87,14 +88,21 @@ class RiskEngine:
         self.fx_client = fx_client or FxClient()
         self.cache_ttl = cache_ttl
         self._rule_cache_lock = threading.Lock()
+        self._pair_locks_guard = threading.Lock()
+        self._pair_locks: Dict[str, threading.Lock] = {}
         self._fx_cache: Dict[str, tuple[float, float]] = {
             "USD_CNY": (7.15, time.monotonic()),
             "HKD_CNY": (0.92, time.monotonic()),
         }
 
+    def _get_pair_lock(self, pair: str) -> threading.Lock:
+        with self._pair_locks_guard:
+            if pair not in self._pair_locks:
+                self._pair_locks[pair] = threading.Lock()
+            return self._pair_locks[pair]
+
     def generate_idempotency_key(self, tx_id: str, merchant_id: str, cycle_time: str) -> str:
-        raw = f"{merchant_id}:{tx_id}"
-        return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:24]
+        return build_idempotency_key(tx_id, merchant_id, cycle_time)
 
     def get_fx_rate(self, pair: str) -> float:
         if pair == "CNY_CNY":
@@ -103,15 +111,22 @@ class RiskEngine:
             cached = self._fx_cache.get(pair)
             if cached and (time.monotonic() - cached[1]) < self.cache_ttl:
                 return cached[0]
-        try:
-            rate = self.fx_client.refresh_fx_quote(pair)
+
+        pair_lock = self._get_pair_lock(pair)
+        with pair_lock:
             with self._rule_cache_lock:
-                self._fx_cache[pair] = (rate, time.monotonic())
-            return rate
-        except Exception:
-            if cached is not None:
-                return cached[0]
-            raise
+                cached = self._fx_cache.get(pair)
+                if cached and (time.monotonic() - cached[1]) < self.cache_ttl:
+                    return cached[0]
+            try:
+                rate = self.fx_client.refresh_fx_quote(pair)
+                with self._rule_cache_lock:
+                    self._fx_cache[pair] = (rate, time.monotonic())
+                return rate
+            except Exception:
+                if cached is not None:
+                    return cached[0]
+                raise
 
     def evaluate_tx(self, tx_id: str, merchant_id: str, currency: str, amount: float, cycle_time: str) -> dict:
         pair = f"{currency}_CNY"
@@ -129,6 +144,7 @@ class RiskEngine:
 
     (pathlib.Path(td) / "tests" / "test_engine.py").write_text('''import concurrent.futures
 import time
+import pytest
 from risk_engine.engine import RiskEngine
 from risk_engine.fx_client import FxClient
 
@@ -140,39 +156,47 @@ def test_basic_evaluation():
     assert res["risk_pass"] is True
 
 
-def test_idempotency_unique_per_tx():
+def test_idempotency_unique_and_invariant():
     eng = RiskEngine(fx_client=FxClient(lambda p: 7.15))
-    assert eng.generate_idempotency_key("TX-A", "M1", "2026-11-24T14:15:01+08:00") != eng.generate_idempotency_key("TX-B", "M1", "2026-11-24T14:15:45+08:00")
+    k1 = eng.generate_idempotency_key("TX-A", "M1", "2026-11-24T14:15:01+08:00")
+    k2 = eng.generate_idempotency_key("TX-B", "M1", "2026-11-24T14:15:45+08:00")
+    k1_z = eng.generate_idempotency_key("TX-A", "M1", "2026-11-24T06:15:30Z")
+    assert k1 != k2
+    assert k1 == k1_z
 
 
-def test_non_blocking_fx_refresh():
-    def slow_fetch(pair):
-        if pair == "USD_CNY":
-            time.sleep(0.3)
-            return 7.15
-        return 0.92
-    eng = RiskEngine(fx_client=FxClient(slow_fetch), cache_ttl=30.0)
+def test_single_flight_and_non_blocking():
+    cli = FxClient(lambda p: (time.sleep(0.25) or 7.15), max_concurrent_per_pair=1)
+    eng = RiskEngine(fx_client=cli, cache_ttl=30.0)
     eng._fx_cache["USD_CNY"] = (7.15, time.monotonic() - 100.0)
     eng._fx_cache["HKD_CNY"] = (0.92, time.monotonic())
-    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as ex:
-        f = ex.submit(eng.evaluate_tx, "TX-1", "M1", "USD", 10.0, "2026-11-24T14:15:01+08:00")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as ex:
+        futs = [ex.submit(eng.evaluate_tx, f"TX-{i}", "M1", "USD", 10.0, "2026-11-24T14:15:01+08:00") for i in range(5)]
         time.sleep(0.05)
         t0 = time.monotonic()
-        r2 = eng.evaluate_tx("TX-2", "M1", "HKD", 10.0, "2026-11-24T14:15:02+08:00")
+        r_hkd = eng.evaluate_tx("TX-HKD", "M1", "HKD", 10.0, "2026-11-24T14:15:02+08:00")
         assert (time.monotonic() - t0) < 0.2
-        assert r2["amount_cny"] == 9.2
-        f.result(timeout=3)
+        assert r_hkd["amount_cny"] == 9.2
+        for f in futs:
+            assert f.result(timeout=4)["amount_cny"] == 71.5
+    assert cli.call_counts.get("USD_CNY") == 1
+
+
+def test_unknown_pair_raises_on_error():
+    eng = RiskEngine(fx_client=FxClient(lambda p: (_ for _ in ()).throw(RuntimeError("503"))), cache_ttl=1.0)
+    with pytest.raises(Exception):
+        eng.evaluate_tx("TX-UNK", "M1", "EUR", 10.0, "2026-11-24T14:15:01+08:00")
 ''', encoding="utf-8")
 
     subprocess.run(["pytest", "-q"], cwd=td, check=True)
     subprocess.run(["git", "add", "."], cwd=td, check=True)
-    subprocess.run(["git", "commit", "-m", "fix: release _rule_cache_lock during FX HTTP refresh and key by tx_id"], cwd=td, check=True)
+    subprocess.run(["git", "commit", "-m", "fix: per-pair single-flight FX refresh, stale fallback, and tx-bound idempotency"], cwd=td, check=True)
     subprocess.run(["git", "push", "origin", "HEAD:main"], cwd=td, check=True)
     fix_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=td, text=True).strip()
 
 print(f"[solve] Phase 1 done: {BRANCH} @ {fix_sha[:8]}", flush=True)
 
-# ── Phase 2: Terminal — SLA calculation ──
+# ── Phase 2: Terminal — Coupled SLA calculation (Mutex Highest-Only + Clause 4.2) ──
 
 def parse_ts(s: str) -> dt.datetime:
     if s.endswith("Z"):
@@ -213,6 +237,11 @@ with (WORKSPACE_DIR / "data" / "settlement_batches_raw.csv").open("r", encoding=
         breached = (not in_maint_exempt) and (
             (latest["status"] in ("TIMEOUT", "504", "FAILED")) or (int(latest["latency_ms"]) > threshold)
         )
+        sla_rate = Decimal("0.025") if tier == "VIP_T1" else Decimal("0.005")
+        dup_rate = Decimal("0.030") if tier == "VIP_T1" else Decimal("0.010")
+        sla_pen = (amt_cny * sla_rate) if breached else Decimal("0.00")
+        dup_comp = (amt_cny * dup_rate) if is_dup else Decimal("0.00")
+
         b = batches.setdefault(bid, {
             "batch_id": bid, "merchant_id": merchant_id, "tier": tier, "currency": cur,
             "settled_amount_cny": Decimal("0.00"), "breached_tx_count": 0,
@@ -221,10 +250,9 @@ with (WORKSPACE_DIR / "data" / "settlement_batches_raw.csv").open("r", encoding=
         b["settled_amount_cny"] += amt_cny
         if breached:
             b["breached_tx_count"] += 1
-            rate = Decimal("0.025") if tier == "VIP_T1" else Decimal("0.005")
-            b["raw_penalty"] += amt_cny * rate
         if is_dup:
             b["duplicate_risk_count"] += 1
+        b["raw_penalty"] += max(sla_pen, dup_comp)
 
 summary_rows = []
 total_penalty = Decimal("0.00")
@@ -249,16 +277,21 @@ with (OUTPUT_DIR / "reconciliation_summary.csv").open("w", encoding="utf-8", new
 
 print(f"[solve] Phase 2 done: SLA total={float(q2(total_penalty))}", flush=True)
 
-# ── Phase 3: Browser — Portal UI first (critical), Gitea/PR/Grafana/Perfetto after ──
+# ── Phase 3: Browser CDP — Portal Drill-Down, Topology/Rebalance, Canary & CAB Revision Loop ──
 
-# main HEAD already has the fix from Phase 1 push
 try:
-    result = subprocess.run(["git", "ls-remote", clone_url, "refs/heads/main"],
-                            capture_output=True, text=True, timeout=15)
+    result = subprocess.run(["git", "ls-remote", clone_url, "refs/heads/main"], capture_output=True, text=True, timeout=15)
     merged_sha = result.stdout.split()[0] if result.stdout else fix_sha
 except Exception:
     merged_sha = fix_sha
-print(f"[solve] main HEAD: {merged_sha[:8]}", flush=True)
+
+rebalanced_weights = {
+    "risk-node-01": 20,
+    "risk-node-02": 0,
+    "risk-node-03": 0,
+    "risk-node-04": 40,
+    "risk-node-05": 40,
+}
 
 with sync_playwright() as p:
     browser = _connect_cdp(p, CDP_ENDPOINT)
@@ -266,115 +299,105 @@ with sync_playwright() as p:
     page = context.new_page()
     page.set_default_timeout(UI_TO)
 
-    # 3a. Portal login (real UI) + ALL writes via evaluate (fast, reliable)
-    print("[solve] Portal login + writes...", flush=True)
-    page.goto(f"{PORTAL}/login", timeout=UI_TO)
-    page.wait_for_load_state("domcontentloaded", timeout=UI_TO)
-    page.fill('input[name="username"]', "sre_oncall", timeout=UI_TO)
-    page.fill('input[name="password"]', "Clearing!2026", timeout=UI_TO)
-    page.click('button[type="submit"]', timeout=UI_TO)
+    page.goto(f"{PORTAL}/login", wait_until="domcontentloaded")
+    page.fill('input[name="username"]', "sre_oncall")
+    page.fill('input[name="password"]', "Clearing!2026")
+    page.click('button[type="submit"]')
+    page.wait_for_url(f"{PORTAL}/", timeout=UI_TO)
     page.wait_for_load_state("networkidle", timeout=UI_TO)
 
-    result = page.evaluate("""async (data) => {
-        const csrf = CSRF;
+    res = page.evaluate("""async (data) => {
+        const m = document.documentElement.innerHTML.match(/const CSRF = "([0-9a-f]+)"/);
+        const csrf = m ? m[1] : '';
         const h = {'Content-Type': 'application/json', 'X-CSRF-Token': csrf};
         const out = {};
-        for (const node of ['risk-node-02', 'risk-node-03']) {
-            const r = await fetch('/api/nodes/' + node, {method:'PUT', headers:h, body:JSON.stringify({status:'ISOLATED'})});
-            out['isolate_' + node] = r.status;
+
+        // Inspect server-rendered topology and high-res telemetry drill-down PNGs
+        const topoResp = await fetch('/api/topology.png');
+        out.topo_status = topoResp.status;
+        const chartResp = await fetch('/api/telemetry/chart.png?start=14:12&end=14:18');
+        out.chart_status = chartResp.status;
+
+        // Isolate risk-node-02 and risk-node-03
+        for (const n of ['risk-node-02', 'risk-node-03']) {
+            const r = await fetch('/api/nodes/' + n, {method:'PUT', headers:h, body:JSON.stringify({status:'ISOLATED'})});
+            out['iso_' + n] = r.status;
         }
-        const cc = await fetch('/api/changes', {method:'POST', headers:h, body:JSON.stringify({
+        // Rebalance risk-engine traffic weights (100% total, canary<=30%, within node capacity bars)
+        const wr = await fetch('/api/traffic-weights', {method:'PUT', headers:h, body:JSON.stringify({weights: data.weights})});
+        out.weights_status = wr.status;
+
+        // Create change ticket & trigger canary replay
+        const cr = await fetch('/api/changes', {method:'POST', headers:h, body:JSON.stringify({
             service: 'risk-engine', commit_sha: data.sha, bottleneck_span: 'acquire_rule_lock',
             scheduled_window_utc8: '2026-11-24 19:45-20:15',
-            description: 'Hotfix lock contention and idempotency key collision'
+            description: 'Release single-flight FX refresh & tx-bound idempotency key'
         })});
-        const chg = await cc.json();
+        const chg = await cr.json();
         out.ticket_id = chg.ticket_id;
-        const cr = await fetch('/api/changes/' + chg.ticket_id + '/canary-replay', {method:'POST', headers:h});
-        const canary = await cr.json();
-        out.canary = canary.canary_status;
-        if (canary.canary_status === 'CANARY_PASSED') {
-            const ap = await fetch('/api/changes/' + chg.ticket_id + '/approve', {method:'POST', headers:h});
-            out.approve = ap.status;
-        }
+
+        const rp = await fetch('/api/changes/' + chg.ticket_id + '/canary-replay', {method:'POST', headers:h});
+        const rep = await rp.json();
+        out.canary_status = rep.canary_status;
+        out.canary_fingerprint = rep.canary_fingerprint;
+
+        // First approve -> triggers CAB NEEDS_REVISION (extended freeze 17:30-20:00)
+        const ap1 = await fetch('/api/changes/' + chg.ticket_id + '/approve', {method:'POST', headers:h});
+        const d1 = await ap1.json();
+        out.first_approve_status = d1.status;
+
+        // Revise window outside 17:30-20:00 and include canary_fingerprint in description
+        const rev = await fetch('/api/changes/' + chg.ticket_id, {method:'PUT', headers:h, body:JSON.stringify({
+            scheduled_window_utc8: '2026-11-24 20:15-20:45',
+            description: 'CAB revised release outside 17:30-20:00 freeze | canary_run_fingerprint=' + rep.canary_fingerprint
+        })});
+        out.revise_status = rev.status;
+
+        // Second approve -> APPROVED
+        const ap2 = await fetch('/api/changes/' + chg.ticket_id + '/approve', {method:'POST', headers:h});
+        const d2 = await ap2.json();
+        out.final_approve_status = d2.status;
+
+        // Audit 4 batches
         for (const b of data.batches) {
             const ar = await fetch('/api/batches/' + b.batch_id, {method:'PUT', headers:h, body:JSON.stringify({
                 settled_amount_cny: b.settled_amount_cny, breached_tx_count: b.breached_tx_count,
                 duplicate_risk_count: b.duplicate_risk_count, penalty_cny: b.penalty_cny,
-                audit_status: 'AUDITED', notes: 'Audited per REV-2 & Contract Clause 4.2'
+                audit_status: 'AUDITED', notes: 'Audited per REV-2, visual matrix & Clause 4.2/5.1'
             })});
             out['audit_' + b.batch_id] = ar.status;
         }
         return out;
-    }""", {"sha": merged_sha, "batches": summary_rows})
-    print(f"[solve] Portal writes: {json.dumps(result)[:200]}", flush=True)
+    }""", {"sha": merged_sha, "batches": summary_rows, "weights": rebalanced_weights})
+    print(f"[solve] Portal writes: {json.dumps(res)}", flush=True)
+    canary_fp = res["canary_fingerprint"]
 
-    # 3h. Gitea: close PR#1 with comment (via curl — Gitea port 3001 not blocked for root)
-    print("[solve] Gitea close PR#1...", flush=True)
-    try:
-        import subprocess as _sp
-        auth = "sre_oncall:Clearing!2026"
-        _sp.run(["curl", "-sf", "-u", auth, "-X", "POST", "-H", "Content-Type: application/json",
-                 "-d", json.dumps({"body": "Rejecting PR #1: pg-primary-01 max_connections=180 hard limit. DB_POOL_SIZE=300 would exhaust DB slots per DBA warning."}),
-                 f"{GITEA}/api/v1/repos/clearing-core/risk-engine/issues/1/comments"], check=False, timeout=10)
-        _sp.run(["curl", "-sf", "-u", auth, "-X", "PATCH", "-H", "Content-Type: application/json",
-                 "-d", json.dumps({"state": "closed"}),
-                 f"{GITEA}/api/v1/repos/clearing-core/risk-engine/pulls/1"], check=False, timeout=10)
-        print("[solve] PR#1 closed with comment", flush=True)
-    except Exception as e:
-        print(f"[solve] PR#1 close skipped: {e}", flush=True)
-
-    # 3i. Grafana: read panel titles and legends
-    print("[solve] Grafana read...", flush=True)
-    try:
-        page.goto("http://127.0.0.1:3000/d/clearing-observability", timeout=UI_TO)
-        page.wait_for_load_state("networkidle", timeout=UI_TO)
-        page.wait_for_selector(".panel-title", timeout=UI_TO)
-        page.wait_for_timeout(1500)  # extra time for SVG rendering
-        titles = page.eval_on_selector_all(".panel-title", "els => els.map(e => e.textContent.trim())")
-        legends = page.eval_on_selector_all(".legend-series", "els => els.map(e => e.textContent.trim())")
-        print(f"[solve] Grafana panels={len(titles)} legends={legends[:6]}", flush=True)
-    except Exception as e:
-        print(f"[solve] Grafana skipped: {e}", flush=True)
-        titles = legends = []
-
-    # 3j. Perfetto: search for acquire_rule_lock span
-    print("[solve] Perfetto search...", flush=True)
-    try:
-        page.goto("http://127.0.0.1:9001/?url=/traces/clearing_incident.pftrace", timeout=UI_TO)
-        page.wait_for_load_state("domcontentloaded", timeout=UI_TO)
-        page.wait_for_timeout(3000)  # WASM trace loading
-        # Try search via keyboard
-        page.keyboard.press("/")
-        page.wait_for_timeout(500)
-        # Scan DOM for span text
-        found = page.eval_on_selector_all("*", """els => {
-            const out = [];
-            for (const e of els) {
-                const t = (e.textContent || '').trim();
-                if (t && t.includes('acquire_rule_lock') && t.length < 200) out.push(t);
-            }
-            return out.slice(0, 5);
-        }""")
-        print(f"[solve] Perfetto span hits={len(found)} sample={found[:2]}", flush=True)
-    except Exception as e:
-        print(f"[solve] Perfetto skipped: {e}", flush=True)
+    # Close Trap PR #1 with technical justification
+    auth = "sre_oncall:Clearing!2026"
+    subprocess.run(["curl", "-sf", "-u", auth, "-X", "POST", "-H", "Content-Type: application/json",
+                    "-d", json.dumps({"body": "Rejecting PR #1: DB_POOL_SIZE=220 exceeds pg-primary-01 hard limit max_connections=180, lacks per-pair single-flight (429 stampede), and silently fakes 1.0 on uncached pairs."}),
+                    f"{GITEA}/api/v1/repos/clearing-core/risk-engine/issues/1/comments"], check=False, timeout=10)
+    subprocess.run(["curl", "-sf", "-u", auth, "-X", "PATCH", "-H", "Content-Type: application/json",
+                    "-d", json.dumps({"state": "closed"}),
+                    f"{GITEA}/api/v1/repos/clearing-core/risk-engine/pulls/1"], check=False, timeout=10)
 
     browser.close()
 
-# ── Phase 4: Terminal — postmortem + email ──
-
-if not merged_sha:
-    merged_sha = fix_sha
+# ── Phase 4: Terminal — postmortem + closing email ──
 
 postmortem = {
     "root_cause_service": "risk-engine",
-    "onset_time_utc8": "2026-11-24T14:14:00+08:00",
+    "first_onset_node": "risk-node-02",
+    "onset_time_utc8": "2026-11-24T14:13:25+08:00",
+    "transient_recovered_node": "risk-node-04",
     "culprit_version": "v2.8.4",
     "bottleneck_span": "acquire_rule_lock",
     "gitea_fix_commit": merged_sha,
     "isolated_nodes": ["risk-node-02", "risk-node-03"],
-    "scheduled_release_window_utc8": "2026-11-24 19:45-20:15",
+    "traffic_weights": rebalanced_weights,
+    "canary_run_fingerprint": canary_fp,
+    "extended_freeze_window_utc8": "17:30-20:00",
+    "scheduled_release_window_utc8": "2026-11-24 20:15-20:45",
     "total_penalty_cny": float(q2(total_penalty)),
     "batches": {r["batch_id"]: r for r in summary_rows},
     "duplicate_risk_tx_ids": sorted(dup_risk_ids),
@@ -382,13 +405,16 @@ postmortem = {
 (OUTPUT_DIR / "incident_postmortem.json").write_text(json.dumps(postmortem, indent=2, ensure_ascii=False), encoding="utf-8")
 
 msg = email.mime.text.MIMEText(
-    f"Root cause: risk-engine v2.8.4 (acquire_rule_lock).\nFix merged via PR: {merged_sha}\nTotal SLA penalty: {float(q2(total_penalty)):.2f} CNY.\n",
+    f"Root cause: risk-engine v2.8.4 (first_onset_node=risk-node-02, span=acquire_rule_lock).\n"
+    f"Fix merged to main: {merged_sha}\n"
+    f"Canary run fingerprint: {canary_fp}\n"
+    f"Total audited SLA penalty: {float(q2(total_penalty)):.2f} CNY.\n",
     "plain", "utf-8",
 )
 msg["From"] = "sre_oncall@clearing.local"
 msg["To"] = "sre-lead@clearing.local"
-msg["Subject"] = f"[Postmortem] risk-engine fix {merged_sha[:8]} & SLA Audit"
+msg["Subject"] = f"[Postmortem] risk-engine fix {merged_sha[:8]} ({canary_fp}) & SLA Audit"
 with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=10) as s:
     s.sendmail("sre_oncall@clearing.local", ["sre-lead@clearing.local"], msg.as_string())
 
-print(f"[solve] DONE: {merged_sha[:8]} penalty={float(q2(total_penalty))}", flush=True)
+print(f"[solve] DONE: {merged_sha[:8]} fp={canary_fp} penalty={float(q2(total_penalty))}", flush=True)
