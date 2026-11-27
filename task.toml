@@ -1,17 +1,17 @@
 schema_version = "1.3"
-artifacts = ["/workspace/output", "/var/lib/clearing-portal"]
+artifacts = ["/workspace/output", "/var/lib/cluster-ops"]
 
 [task]
-name = "clearing-core/gateway-cascade-audit"
-version = "0.5.0"
-description = "金融清结算与风控网关级联故障定位、时序钻取与视觉拓扑切流配平、跨模块Gitea热修、CAB动态复核闭环与真多模态SLA合规审计"
+name = "infra-capacity/gpu-cluster-rebalance"
+version = "0.6.0"
+description = "H100 GPU 集群多机柜拓扑重排、受限配额隐式物理仿真诊断、跨团队算力协商签收与 FinOps 变更签发"
 
 [metadata]
 delivery_role = "cua-task"
 template_version = "3.0.0"
 status = "ready"
 scenario = "其他"
-subscenario = "金融清结算与风控运维"
+subscenario = "AI基础设施与算力调度运营"
 operation_difficulty = "高级操作"
 tool_type = "web + cli"
 difficulty = "困难"

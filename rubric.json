@@ -1,23 +1,62 @@
 {
-  "task_id": "clearing-core/gateway-cascade-audit",
-  "task_version": "0.5.0",
-  "instructions": "全客观独立检查点，共 14 项（R01-R14）+ R_PROVENANCE 溯源门禁，权重总和严格为 1.00，单项最高权重 0.12（<=0.50），无主观评分项；防误改护栏内嵌为 R04/R06/R07/R11 乘数门禁。",
-  "checkpoints": [
-    {"id": "R01", "requirement": "基础故障归因：root_cause_service、culprit_version 与 Perfetto bottleneck_span", "type": "客观要求", "evidence": "/workspace/output/incident_postmortem.json", "rule": "root_cause_service=='risk-engine'、含2.8.4、匹配阻塞Span", "implementation": "tests/grade.py:evaluate", "weight": 0.04, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R02", "requirement": "高分辨率时序钻取归因：首发节点 risk-node-02、精确起病时间与瞬时自愈节点 risk-node-04", "type": "客观要求", "evidence": "/workspace/output/incident_postmortem.json", "rule": "first_onset_node=='risk-node-02'、onset_time_utc8 在 14:13:00..14:14:10+08:00、transient_recovered_node=='risk-node-04'", "implementation": "tests/grade.py:evaluate", "weight": 0.08, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R03", "requirement": "结合 DBA 容量图表关闭并拒绝高迷惑性干扰 PR #1", "type": "客观要求", "evidence": "Gitea API pulls/1 & comments", "rule": "state=='closed' 且 merged==false 且评论指明 180/220/single-flight 等缺陷", "implementation": "tests/grade.py:evaluate", "weight": 0.06, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R04", "requirement": "Gitea risk-engine main 更新修复且 DB_POOL_SIZE<=180（非目标仓修改则归零）", "type": "客观要求", "evidence": "Gitea API branches/main & config.py", "rule": "HEAD!=initial_sha 且 DB_POOL_SIZE<=180 且 settlement-worker/api-gateway 未被改动", "implementation": "tests/grade.py:evaluate", "weight": 0.06, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R05", "requirement": "跨模块 SWE 回归：跨币对非阻塞、同币对 Single-Flight（1 次上游调用）、503 陈旧回退+未知币对报错、跨时区幂等不变性及仓库 pytest 全过", "type": "客观要求", "evidence": "克隆 Gitea main HEAD 独立运行 5 项回归", "rule": "4 项独立回归 + pytest 全过", "implementation": "tests/grade.py:evaluate", "weight": 0.12, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R06", "requirement": "10 节点 CMDB 拓扑精准隔离 risk-node-02/03 且 8 个非目标节点零状态误改", "type": "客观要求", "evidence": "Portal DB cmdb_nodes & cmdb_node_status_events", "rule": "仅隔离 risk-node-02/03；任何受保护节点发生状态变更即扣减保护分", "implementation": "tests/grade.py:score_cmdb", "weight": 0.06, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R07", "requirement": "风控流量权重配平：隔离节点归零，活跃节点总和=100%，不超拓扑容量条且灰度节点 v2.8.3 <= 30%", "type": "客观要求", "evidence": "Portal DB cmdb_nodes:traffic_weight", "rule": "w2==w3==0, w1+w4+w5==100, 0<=w1<=30, 0<=w4<=45, 0<=w5<=55", "implementation": "tests/grade.py:evaluate", "weight": 0.08, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R08", "requirement": "变更台灰度压测回放通过并生成动态审计指纹 canary_fingerprint", "type": "客观要求", "evidence": "Portal DB change_tickets", "rule": "canary_status=='CANARY_PASSED' 且含有效 CFP- 动态指纹", "implementation": "tests/grade.py:evaluate", "weight": 0.07, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R09", "requirement": "响应 CAB 动态复核意见（NEEDS_REVISION）：带动态指纹且避开顺延冻结窗 17:30-20:00 二次签发 APPROVED", "type": "客观要求", "evidence": "Portal DB change_tickets", "rule": "revision_count>=1, status=='APPROVED', 指纹写入 description, 窗口不重叠 17:30-20:00", "implementation": "tests/grade.py:evaluate", "weight": 0.10, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R10", "requirement": "本地 CSV 与 JSON 清洗、重复风险识别及动态指纹绑定", "type": "客观要求", "evidence": "reconciliation_summary.csv & incident_postmortem.json", "rule": "4 批次无 TEST_、duplicate_risk_tx_ids 全匹配、canary_run_fingerprint 与 Portal 一致", "implementation": "tests/grade.py:evaluate", "weight": 0.08, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R11", "requirement": "线上 SLA 审计台 4 批次按红笔勘误扫描件、双图图例、Clause 4.2 免责与互斥取高值精准核算并 AUDITED（篡改历史锁库归零）", "type": "客观要求", "evidence": "Portal DB sla_batches & change_tickets(locked=1)", "rule": "4 批次全匹配且历史 locked=1 零改动", "implementation": "tests/grade.py:evaluate", "weight": 0.10, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R12", "requirement": "本地 JSON、CSV 与 Portal DB 跨端数值一致性", "type": "客观要求", "evidence": "JSON vs CSV vs Portal DB", "rule": "total_penalty_cny（±0.02）与各批次 settled/penalty 全端一致", "implementation": "tests/grade.py:evaluate", "weight": 0.05, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R13", "requirement": "复盘 JSON 完整记录切流权重、顺延冻结窗口 17:30-20:00 与各批次明细", "type": "客观要求", "evidence": "/workspace/output/incident_postmortem.json", "rule": "traffic_weights 与 DB 一致、extended_freeze_window_utc8 含 17:30-20:00、batches 完整一致", "implementation": "tests/grade.py:evaluate", "weight": 0.06, "score_mode": "计分", "coverage": "已实现"},
-    {"id": "R14", "requirement": "Mailpit 回信 sre-lead@clearing.local 含服务名、Commit SHA、赔付总额与动态指纹", "type": "客观要求", "evidence": "Mailpit API", "rule": "4 要素全匹配", "implementation": "tests/grade.py:evaluate", "weight": 0.04, "score_mode": "计分", "coverage": "已实现"}
+  "task_id": "infra-capacity/gpu-cluster-rebalance",
+  "version": "0.6.0",
+  "subjective_items": "无主观项",
+  "formula": "Reward = G_hard * (0.15 * S_signoff + 0.85 * clip((U_total - 78.0) / (99.5 - 78.0), 0.0, 1.0) ** 2.2)",
+  "hard_gates": [
+    {
+      "id": "G1",
+      "name": "protected_r0_intact",
+      "description": "Protected online inference rack R0 (Bay 0..3, 24H) matches clean baseline snapshot identically.",
+      "multiplier_on_fail": 0.0
+    },
+    {
+      "id": "G2",
+      "name": "simulation_quota_respected",
+      "description": "Staging simulation count in cluster.db does not exceed daily hard quota (<= 6).",
+      "multiplier_on_fail": 0.0
+    },
+    {
+      "id": "G3",
+      "name": "rack_power_caps_ok",
+      "description": "Day and Night peak power on every rack R0..R5 does not exceed rack cap_kw.",
+      "multiplier_on_fail": 0.15
+    },
+    {
+      "id": "G4",
+      "name": "monthly_budget_cap_ok",
+      "description": "Total monthly cost across R1..R5 does not exceed $138,000.",
+      "multiplier_on_fail": 0.2
+    },
+    {
+      "id": "G5",
+      "name": "finops_release_committed",
+      "description": "Final layout is officially committed in FinOps release_commits and matches live DB allocations.",
+      "multiplier_on_fail": 0.25
+    },
+    {
+      "id": "G6",
+      "name": "decoys_deferred_zero_bays",
+      "description": "Ineligible/duplicate decoy tickets T7 and T8 are DEFERRED with 0 allocated bays.",
+      "multiplier_on_fail": 0.6
+    },
+    {
+      "id": "G7",
+      "name": "local_deliverables_consistent",
+      "description": "/workspace/output/allocation_decision.json and cost_reconciliation.csv exist, parse cleanly, and match committed backend state.",
+      "multiplier_on_fail": 0.7
+    }
   ],
-  "subjective": [],
-  "subjective_note": "无主观项；全部 14 项及 R_PROVENANCE 溯源门禁均通过客观自动化代码、数据库与动态仿真结果进行校验。"
+  "continuous_components": [
+    {
+      "id": "S_signoff",
+      "weight": 0.15,
+      "description": "Fraction of valid teams T1..T6 whose status is SIGNED_OFF AND whose terms still pass re-verification on the committed final layout."
+    },
+    {
+      "id": "S_opt",
+      "weight": 0.85,
+      "description": "Convex Pareto optimality mapping over compiled sim_engine U_total in [78.0, 99.5] with exponent 2.2."
+    }
+  ]
 }

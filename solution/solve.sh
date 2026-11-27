@@ -1,3 +1,4 @@
 #!/usr/bin/env bash
 set -euo pipefail
-exec python3 "$(dirname "$0")/solve.py"
+
+exec python3 /solution/solve.py
