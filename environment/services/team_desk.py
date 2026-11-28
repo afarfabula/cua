@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
@@ -21,7 +21,7 @@ from common import (
     verify_session_cookie,
 )
 
-app = FastAPI(title="Team Demand & Negotiation Desk", version="0.6.0")
+app = FastAPI(title="Team Demand & Negotiation Desk", version="0.6.3")
 
 LOGIN_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>Login - Team Negotiation Desk</title>
@@ -63,10 +63,7 @@ class NegotiateRequest(BaseModel):
     offered_gpus: Optional[int] = None
     offered_bays: Optional[int] = None
     shift: Optional[str] = None
-    rdma: Optional[bool] = None
-    priority_iops: Optional[bool] = None
-    single_spine: Optional[bool] = None
-    no_thermal_bleed: Optional[bool] = None
+    options: Optional[List[str]] = None
 
 
 class DeferRequest(BaseModel):
@@ -74,7 +71,8 @@ class DeferRequest(BaseModel):
 
 
 def _parse_intent(body: NegotiateRequest) -> dict:
-    txt = (body.message or "").lower()
+    opts_txt = " ".join(body.options or [])
+    txt = f"{body.message or ''} {opts_txt}".lower()
     bays = body.offered_bays
     if bays is None and body.offered_gpus is not None:
         bays = body.offered_gpus // 4
@@ -95,10 +93,10 @@ def _parse_intent(body: NegotiateRequest) -> dict:
         elif "24h" in txt or "全天" in txt:
             shift = "24H"
 
-    rdma = body.rdma if body.rdma is not None else any(k in txt for k in ("rdma", "spine-b", "专网", "高速互联", "roce"))
-    iops = body.priority_iops if body.priority_iops is not None else any(k in txt for k in ("iops", "priority", "优先io", "nvme qos", "qos"))
-    single_spine = body.single_spine if body.single_spine is not None else any(k in txt for k in ("single spine", "single-spine", "同spine", "单spine", "不跨交换", "同交换"))
-    no_bleed = body.no_thermal_bleed if body.no_thermal_bleed is not None else any(k in txt for k in ("no bleed", "thermal", "降频", "散热", "交错", "不相邻", "零热"))
+    rdma = any(k in txt for k in ("rdma", "spine-b", "专网", "高速互联", "roce"))
+    iops = any(k in txt for k in ("iops", "priority", "优先io", "优先 io", "nvme qos", "qos"))
+    single_spine = any(k in txt for k in ("single spine", "single-spine", "single_spine", "同spine", "单spine", "不跨交换", "同交换"))
+    no_bleed = any(k in txt for k in ("no bleed", "no_bleed", "no_thermal_bleed", "thermal", "降频", "散热", "交错", "不相邻", "零热"))
     return {
         "bays": bays,
         "shift": shift,

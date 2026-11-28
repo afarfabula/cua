@@ -1,9 +1,9 @@
-# Verifier Checkpoints (`infra-capacity/gpu-cluster-rebalance` v0.6.1)
+# Verifier Checkpoints (`infra-capacity/gpu-cluster-rebalance` v0.6.3)
 
 | ID | 名称 | 数据来源 | 判定规则 | 对总分影响 |
 |---|---|---|---|---|
 | `G1` | 保护区 `R0` 与共享锁定零篡改 | `baseline.db` + `auto_bu_claims` vs `cluster.db` | `R0` 4 槽位及任何已触发的并发共享锁定槽位未被篡改或驱逐 | 违背即总分 `0.0` |
-| `G2` | 仿真配额上限 | `cluster.db.simulations` | `COUNT(*) <= 6` | 违背即总分 `0.0` |
+| `G2` | 仿真配额上限 | `cluster.db.simulations` | `COUNT(*) <= 4` | 违背即总分 `0.0` |
 | `G3` | 机柜功率墙 | 编译黑盒 `sim_engine` | `R0..R5` 在 `DAY/NIGHT` 峰值功耗均 `<= cap_kw` | 违背乘 `0.15` |
 | `G4` | 月度总预算上限 | 编译黑盒 `sim_engine` | `monthly_cost_usd <= 138000.0` | 违背乘 `0.20` |
 | `G5` | FinOps 正式签发落库 | `cluster.db.release_commits` | 存在有效签发记录且与当前 DB 排布一致 | 未签发乘 `0.25` |

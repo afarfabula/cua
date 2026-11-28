@@ -46,11 +46,11 @@ def main() -> None:
             ).raise_for_status()
             deferred.append(tid)
 
-    # 2. Negotiate concessions & clarify constraints
-    s_team.post(f"{TEAM_URL}/api/tickets/T1/negotiate", json={"message": "提供 Spine-B RDMA 专网，缩减至 16 卡 (4 bays 24H)", "offered_gpus": 16, "rdma": True}, timeout=15).raise_for_status()
+    # 2. Negotiate concessions & clarify constraints (generic message + options payload)
+    s_team.post(f"{TEAM_URL}/api/tickets/T1/negotiate", json={"message": "提供 Spine-B RDMA 专网，缩减至 16 卡 (4 bays 24H)", "offered_gpus": 16, "options": ["rdma", "spine-b"]}, timeout=15).raise_for_status()
     s_team.post(f"{TEAM_URL}/api/tickets/T2/negotiate", json={"message": "确认 Zone-A 本地 NVMe 与独立机柜 IO 要求"}, timeout=15).raise_for_status()
-    s_team.post(f"{TEAM_URL}/api/tickets/T3/negotiate", json={"message": "保证单 Spine 部署且无相邻高功耗热降频，压缩至 12 卡 (3 bays)", "offered_gpus": 12, "single_spine": True, "no_thermal_bleed": True}, timeout=15).raise_for_status()
-    s_team.post(f"{TEAM_URL}/api/tickets/T4/negotiate", json={"message": "开启 priority_iops 并切至 NIGHT_ONLY (21:00-09:00) 4 槽位", "offered_bays": 4, "shift": "NIGHT_ONLY", "priority_iops": True}, timeout=15).raise_for_status()
+    s_team.post(f"{TEAM_URL}/api/tickets/T3/negotiate", json={"message": "保证单 Spine 部署且无相邻高功耗热降频，压缩至 12 卡 (3 bays)", "offered_gpus": 12, "options": ["single_spine", "no_thermal_bleed"]}, timeout=15).raise_for_status()
+    s_team.post(f"{TEAM_URL}/api/tickets/T4/negotiate", json={"message": "开启优先 IOPS QoS 并切至 NIGHT_ONLY (21:00-09:00) 4 槽位", "offered_bays": 4, "shift": "NIGHT_ONLY", "options": ["priority_iops"]}, timeout=15).raise_for_status()
     s_team.post(f"{TEAM_URL}/api/tickets/T5/negotiate", json={"message": "提供 DAY_ONLY (09:00-21:00) 4 槽位共享错峰", "offered_bays": 4, "shift": "DAY_ONLY"}, timeout=15).raise_for_status()
 
     # 3. Preserve R0 and write Pareto-optimal checkerboard + time-shared layout across R1..R5

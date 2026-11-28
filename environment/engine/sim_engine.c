@@ -65,12 +65,12 @@ typedef struct {
 
 static const TeamSpec TEAMS[NUM_TEAMS] = {
     {"PROD-ONLINE-INFERENCE", 5.0, 0, 0.0, 4, SHIFT_24H},
-    {"T1", 5.5, 1, 30.0, 6, SHIFT_24H},
-    {"T2", 4.2, 0, 22.0, 4, SHIFT_24H},
-    {"T3", 5.5, 1, 20.0, 4, SHIFT_24H},
-    {"T4", 4.2, 0, 12.0, 4, SHIFT_24H},
-    {"T5", 3.0, 0, 10.0, 4, SHIFT_24H},
-    {"T6", 5.5, 1,  6.0, 3, SHIFT_24H},
+    {"T1", 5.5, 1, 22.0, 6, SHIFT_24H},
+    {"T2", 4.2, 0, 18.0, 4, SHIFT_24H},
+    {"T3", 5.5, 1, 18.0, 4, SHIFT_24H},
+    {"T4", 4.2, 0, 14.0, 4, SHIFT_24H},
+    {"T5", 3.0, 0, 12.0, 4, SHIFT_24H},
+    {"T6", 5.5, 1, 16.0, 3, SHIFT_24H},
     {"T7", 3.0, 0,  0.0, 0, SHIFT_24H},
     {"T8", 3.0, 0,  0.0, 0, SHIFT_24H},
     {"SHARED-AUTO-BU-MED", 4.2, 0, 0.0, 0, SHIFT_24H},
@@ -459,9 +459,11 @@ int main(int argc, char **argv) {
 
     for (int r = 1; r < MAX_RACKS; r++) {
         for (int b = 0; b < BAYS_PER_RACK; b++) {
+            int hot_ceiling = ((r == 2 || r == 4) && b == 3);
             int td = slot_team_day[r][b];
             if (td >= 0 && TEAMS[td].high_tdp) {
-                if ((b > 0 && slot_team_day[r][b - 1] >= 0 && TEAMS[slot_team_day[r][b - 1]].high_tdp) ||
+                if (hot_ceiling ||
+                    (b > 0 && slot_team_day[r][b - 1] >= 0 && TEAMS[slot_team_day[r][b - 1]].high_tdp) ||
                     (b + 1 < BAYS_PER_RACK && slot_team_day[r][b + 1] >= 0 && TEAMS[slot_team_day[r][b + 1]].high_tdp)) {
                     bay_bleed_day[r][b] = 1;
                     team_has_bleed[td] = 1;
@@ -469,7 +471,8 @@ int main(int argc, char **argv) {
             }
             int tn = slot_team_night[r][b];
             if (tn >= 0 && TEAMS[tn].high_tdp) {
-                if ((b > 0 && slot_team_night[r][b - 1] >= 0 && TEAMS[slot_team_night[r][b - 1]].high_tdp) ||
+                if (hot_ceiling ||
+                    (b > 0 && slot_team_night[r][b - 1] >= 0 && TEAMS[slot_team_night[r][b - 1]].high_tdp) ||
                     (b + 1 < BAYS_PER_RACK && slot_team_night[r][b + 1] >= 0 && TEAMS[slot_team_night[r][b + 1]].high_tdp)) {
                     bay_bleed_night[r][b] = 1;
                     team_has_bleed[tn] = 1;
@@ -588,6 +591,14 @@ int main(int argc, char **argv) {
         team_eff[t] = eff;
         team_u[t] = TEAMS[t].weight * cov * eff;
         u_sum += team_u[t];
+    }
+
+    int bleed_teams = 0;
+    for (int t = TEAM_T1; t <= TEAM_T6; t++) {
+        if (team_has_bleed[t]) bleed_teams++;
+    }
+    if (bleed_teams > 0) {
+        u_sum *= pow(0.92, (double)bleed_teams);
     }
 
     int decoy_bays = team_bays_raw[TEAM_T7] + team_bays_raw[TEAM_T8];

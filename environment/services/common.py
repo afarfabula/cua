@@ -16,7 +16,7 @@ SIM_ENGINE_BIN = os.environ.get("SIM_ENGINE_BIN", "/opt/services/engine/sim_engi
 SECRET_FILE = pathlib.Path(os.environ.get("CLUSTER_SECRET_FILE", "/var/lib/cluster-ops/.session_secret"))
 PORTAL_USER = "cap_lead"
 PORTAL_PASS = "Cluster!2026"
-MAX_SIM_RUNS = 6
+MAX_SIM_RUNS = 4
 
 RACK_SPECS = [
     {"rack": "R0", "spine": "Spine-A", "zone": "Zone-A", "has_rdma": False, "cap_kw": 24.0, "protected": True},

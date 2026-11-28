@@ -1,6 +1,6 @@
 {
   "task_id": "infra-capacity/gpu-cluster-rebalance",
-  "version": "0.6.1",
+  "version": "0.6.3",
   "subjective_items": "无主观项",
   "formula": "Reward = G_hard * (0.15 * S_signoff + 0.85 * clip((U_total - 78.0) / (99.5 - 78.0), 0.0, 1.0) ** 2.2)",
   "hard_gates": [
@@ -13,7 +13,7 @@
     {
       "id": "G2",
       "name": "simulation_quota_respected",
-      "description": "Staging simulation count in cluster.db does not exceed daily hard quota (<= 6).",
+      "description": "Staging simulation count in cluster.db does not exceed daily hard quota (<= 4).",
       "multiplier_on_fail": 0.0
     },
     {

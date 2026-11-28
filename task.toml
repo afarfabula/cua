@@ -3,7 +3,7 @@ artifacts = ["/workspace/output", "/var/lib/cluster-ops"]
 
 [task]
 name = "infra-capacity/gpu-cluster-rebalance"
-version = "0.6.1"
+version = "0.6.3"
 description = "H100 GPU 集群多机柜拓扑重排、受限配额隐式物理仿真诊断、跨团队算力协商签收与 FinOps 变更签发"
 
 [metadata]

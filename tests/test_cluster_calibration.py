@@ -95,24 +95,86 @@ def test_oracle_and_symmetry(sim_bin):
         + [{"rack": "R3", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (1, 3)]
         + [{"rack": "R4", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (1, 3)]
     )
+    # Under v0.6.3 asymmetric ceiling (R2/R4 Bay 3 hot-zone), valid permutations keep High-TDP off R2 B3 & R4 B3
     sym_a = (
-        [{"rack": "R4", "bay": b, "shift": "24H", "team": "T1", "rdma": True, "priority_iops": False} for b in (1, 3)]
+        [{"rack": "R4", "bay": b, "shift": "24H", "team": "T1", "rdma": True, "priority_iops": False} for b in (0, 2)]
         + [{"rack": "R5", "bay": b, "shift": "24H", "team": "T1", "rdma": True, "priority_iops": False} for b in (1, 3)]
-        + [{"rack": "R2", "bay": b, "shift": "24H", "team": "T3", "rdma": False, "priority_iops": False} for b in (1, 3)]
+        + [{"rack": "R2", "bay": b, "shift": "24H", "team": "T3", "rdma": False, "priority_iops": False} for b in (0, 2)]
         + [{"rack": "R3", "bay": 1, "shift": "24H", "team": "T3", "rdma": False, "priority_iops": False}]
         + [{"rack": "R1", "bay": b, "shift": "24H", "team": "T6", "rdma": False, "priority_iops": False} for b in (1, 3)]
         + [{"rack": "R3", "bay": 3, "shift": "24H", "team": "T6", "rdma": False, "priority_iops": False}]
         + [{"rack": "R1", "bay": b, "shift": "24H", "team": "T2", "rdma": False, "priority_iops": False} for b in (0, 2)]
-        + [{"rack": "R2", "bay": b, "shift": "24H", "team": "T2", "rdma": False, "priority_iops": False} for b in (0, 2)]
-        + [{"rack": "R4", "bay": b, "shift": "NIGHT_ONLY", "team": "T4", "rdma": False, "priority_iops": True} for b in (0, 2)]
-        + [{"rack": "R5", "bay": b, "shift": "NIGHT_ONLY", "team": "T4", "rdma": False, "priority_iops": True} for b in (0, 2)]
-        + [{"rack": "R4", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (0, 2)]
-        + [{"rack": "R5", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (0, 2)]
+        + [{"rack": "R2", "bay": b, "shift": "24H", "team": "T2", "rdma": False, "priority_iops": False} for b in (1, 3)]
+        + [{"rack": "R3", "bay": b, "shift": "NIGHT_ONLY", "team": "T4", "rdma": False, "priority_iops": True} for b in (0, 2)]
+        + [{"rack": "R4", "bay": b, "shift": "NIGHT_ONLY", "team": "T4", "rdma": False, "priority_iops": True} for b in (1, 3)]
+        + [{"rack": "R3", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (0, 2)]
+        + [{"rack": "R4", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (1, 3)]
     )
     for layout in (oracle_a, sym_a):
         res = run_engine(sim_bin, layout, full_neg)
         assert res["u_total"] == 100.0
         assert convex_reward(res, 1.0) == 1.0
+
+
+def test_asymmetric_hot_ceiling_and_qwen4_r5_replay(sim_bin):
+    full_neg = {
+        "T1": {"req_bays": 4, "shift": "24H", "require_rdma": True},
+        "T3": {"req_bays": 3, "shift": "24H", "require_single_spine": True, "require_no_bleed": True},
+        "T4": {"req_bays": 4, "shift": "NIGHT_ONLY", "require_priority_iops": True},
+        "T5": {"req_bays": 4, "shift": "DAY_ONLY"},
+    }
+    # High-TDP T6 in (R2, Bay 3) triggers asymmetric ceiling hot-zone even without vertical adjacency if placed in R2 B0, B3 + R3 B0? Test R2 B0, B3 + R3 B2
+    ceiling_test = (
+        [{"rack": "R4", "bay": b, "shift": "24H", "team": "T1", "rdma": True, "priority_iops": False} for b in (0, 2)]
+        + [{"rack": "R5", "bay": b, "shift": "24H", "team": "T1", "rdma": True, "priority_iops": False} for b in (0, 2)]
+        + [{"rack": "R1", "bay": b, "shift": "24H", "team": "T3", "rdma": False, "priority_iops": False} for b in (0, 2)]
+        + [{"rack": "R3", "bay": 0, "shift": "24H", "team": "T3", "rdma": False, "priority_iops": False}]
+        + [{"rack": "R2", "bay": 0, "shift": "24H", "team": "T6", "rdma": False, "priority_iops": False},
+           {"rack": "R2", "bay": 3, "shift": "24H", "team": "T6", "rdma": False, "priority_iops": False},
+           {"rack": "R3", "bay": 2, "shift": "24H", "team": "T6", "rdma": False, "priority_iops": False}]
+        + [{"rack": "R1", "bay": b, "shift": "24H", "team": "T2", "rdma": False, "priority_iops": False} for b in (1, 3)]
+        + [{"rack": "R2", "bay": b, "shift": "24H", "team": "T2", "rdma": False, "priority_iops": False} for b in (1, 2)]
+        + [{"rack": "R3", "bay": b, "shift": "NIGHT_ONLY", "team": "T4", "rdma": False, "priority_iops": True} for b in (1, 3)]
+        + [{"rack": "R4", "bay": b, "shift": "NIGHT_ONLY", "team": "T4", "rdma": False, "priority_iops": True} for b in (1, 3)]
+        + [{"rack": "R3", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (1, 3)]
+        + [{"rack": "R4", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (1, 3)]
+    )
+    rc = run_engine(sim_bin, ceiling_test, full_neg)
+    assert rc["teams"]["T6"]["thermal_bleed"] is True
+
+    # Replay exact qwen4-r5 submission (sacrificing T6 in R2 B1,2,3) -> must drop <= 0.38!
+    r5_path = REPO_ROOT / "eval-results" / "qwen4-r5" / "output" / "allocation_decision.json"
+    if r5_path.is_file():
+        r5_dec = json.loads(r5_path.read_text(encoding="utf-8"))
+        r5_assigns = [a for a in r5_dec["assignments"] if a["rack"] != "R0"]
+    else:
+        r5_assigns = (
+            [{"rack": "R1", "bay": b, "shift": "24H", "team": "T2", "rdma": False, "priority_iops": True} for b in (0, 1, 2)]
+            + [{"rack": "R1", "bay": 3, "shift": "24H", "team": "T3", "rdma": False, "priority_iops": False}]
+            + [{"rack": "R2", "bay": 0, "shift": "24H", "team": "T2", "rdma": False, "priority_iops": True}]
+            + [{"rack": "R2", "bay": b, "shift": "24H", "team": "T6", "rdma": False, "priority_iops": False} for b in (1, 2, 3)]
+            + [{"rack": "R3", "bay": b, "shift": "24H", "team": "T3", "rdma": False, "priority_iops": False} for b in (0, 2)]
+            + [{"rack": "R3", "bay": b, "shift": "NIGHT_ONLY", "team": "T4", "rdma": False, "priority_iops": True} for b in (1, 3)]
+            + [{"rack": "R4", "bay": b, "shift": "24H", "team": "T1", "rdma": True, "priority_iops": False} for b in (0, 2)]
+            + [{"rack": "R4", "bay": b, "shift": "NIGHT_ONLY", "team": "T4", "rdma": False, "priority_iops": True} for b in (1, 3)]
+            + [{"rack": "R4", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (1, 3)]
+            + [{"rack": "R5", "bay": b, "shift": "24H", "team": "T1", "rdma": True, "priority_iops": False} for b in (0, 2)]
+            + [{"rack": "R5", "bay": b, "shift": "DAY_ONLY", "team": "T5", "rdma": False, "priority_iops": False} for b in (1, 3)]
+        )
+    res_r5 = run_engine(sim_bin, r5_assigns, full_neg)
+    rew_r5 = convex_reward(res_r5, 1.0)
+    assert rew_r5 <= 0.38, f"Expected qwen4-r5 replay <= 0.38, got {rew_r5} (u_total={res_r5['u_total']})"
+
+
+def test_negotiate_request_no_spoiler_fields():
+    import sys
+    svc_dir = REPO_ROOT / "environment" / "services"
+    if str(svc_dir) not in sys.path:
+        sys.path.insert(0, str(svc_dir))
+    from team_desk import NegotiateRequest
+    fields = set(NegotiateRequest.model_fields.keys())
+    for spoiler in ("rdma", "priority_iops", "single_spine", "no_thermal_bleed"):
+        assert spoiler not in fields, f"Spoiler field {spoiler!r} leaked into NegotiateRequest"
 
 
 def test_autobu_thermal_bleed_and_zero_cost(sim_bin):

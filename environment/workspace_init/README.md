@@ -3,7 +3,7 @@
 ## 内网系统入口
 | 系统 | 地址 | 账号 / 密码 | 说明 |
 |---|---|---|---|
-| Rack &amp; Fabric Console | `http://127.0.0.1:8081` | `cap_lead` / `Cluster!2026` | 机柜槽位排布、Staging 仿真（每日上限 6 次）与热力图遥测 |
+| Rack &amp; Fabric Console | `http://127.0.0.1:8081` | `cap_lead` / `Cluster!2026` | 机柜槽位排布、Staging 仿真（每日上限 4 次）与热力图遥测 |
 | Team Negotiation Desk | `http://127.0.0.1:8082` | `cap_lead` / `Cluster!2026` | 8 个申请团队工单、历史审批归档、条件协商与 SLA 签收 |
 | FinOps &amp; Release Portal | `http://127.0.0.1:8083` | `cap_lead` / `Cluster!2026` | 部门预算 PO 台账、费用核算与正式变更签发 |
 

@@ -50,17 +50,17 @@ def seed_database(
         )
 
     tickets = [
-        ("T1", "Foundation-Pretrain", "HIGH", 5.5, "AllReduce-Heavy", 30.0, 6, 6, "24H", 0, 0, 0, 0, "OPEN",
+        ("T1", "Foundation-Pretrain", "HIGH", 5.5, "AllReduce-Heavy", 22.0, 6, 6, "24H", 0, 0, 0, 0, "OPEN",
          "申请 24 卡（6 槽位 24H）用于大模型预训练主线；当前机柜池无明确减卡承诺。"),
-        ("T2", "Realtime-Search-Rank", "MED", 4.2, "Zone-A NVMe + High-IO", 22.0, 4, 4, "24H", 0, 0, 0, 0, "OPEN",
+        ("T2", "Realtime-Search-Rank", "MED", 4.2, "Zone-A NVMe + High-IO", 18.0, 4, 4, "24H", 0, 0, 0, 0, "OPEN",
          "实时搜推精排在线训练，需 16 卡（4 槽位 24H），对本地 NVMe IO 延迟极度敏感。"),
-        ("T3", "Multimodal-PostTrain", "HIGH", 5.5, "AllReduce-Heavy", 20.0, 4, 4, "24H", 0, 0, 0, 0, "OPEN",
+        ("T3", "Multimodal-PostTrain", "HIGH", 5.5, "AllReduce-Heavy", 18.0, 4, 4, "24H", 0, 0, 0, 0, "OPEN",
          "多模态后训练，申请 16 卡（4 槽位 24H）；跨交换机通信敏感。"),
-        ("T4", "Risk-Eval-Sweep", "MED", 4.2, "High-IO Batch", 12.0, 4, 4, "24H", 0, 0, 0, 0, "OPEN",
+        ("T4", "Risk-Eval-Sweep", "MED", 4.2, "High-IO Batch", 14.0, 4, 4, "24H", 0, 0, 0, 0, "OPEN",
          "风控历史样本回测扫描，申请 16 卡（4 槽位 24H），存在高频随机读写特征。"),
-        ("T5", "Sales-Copilot-Tuning", "LOW", 3.0, "Interactive Tuning", 10.0, 4, 4, "24H", 0, 0, 0, 0, "OPEN",
+        ("T5", "Sales-Copilot-Tuning", "LOW", 3.0, "Interactive Tuning", 12.0, 4, 4, "24H", 0, 0, 0, 0, "OPEN",
          "算法工程微调实验，默认申请 16 卡（4 槽位 24H），具体研发作息可进一步沟通。"),
-        ("T6", "Safety-RedTeam-RL", "HIGH", 5.5, "Standalone High-TDP", 6.0, 3, 3, "24H", 0, 0, 0, 0, "OPEN",
+        ("T6", "Safety-RedTeam-RL", "HIGH", 5.5, "Standalone High-TDP", 16.0, 3, 3, "24H", 0, 0, 0, 0, "OPEN",
          "安全对齐红队强化学习，需 12 卡（3 槽位 24H），独立单卡高功耗持续压测。"),
         ("T7", "Marketing-GenAI-PoC", "LOW", 3.0, "PoC", 0.0, 4, 4, "24H", 0, 0, 0, 0, "OPEN",
          "市场部生成式创意试点，口头标为 P1 紧急，申请 16 卡（4 槽位 24H）。"),
@@ -103,12 +103,12 @@ def seed_database(
 
     truth = {
         "task_id": "infra-capacity/gpu-cluster-rebalance",
-        "task_version": "0.6.1",
+        "task_version": "0.6.3",
         "protected_rack": "R0",
         "protected_team": "PROD-ONLINE-INFERENCE",
         "valid_teams": ["T1", "T2", "T3", "T4", "T5", "T6"],
         "decoy_teams": ["T7", "T8"],
-        "max_sim_runs": 6,
+        "max_sim_runs": 4,
         "budget_cap_usd": 138000.0,
         "scoring": {"u_greedy": 78.0, "u_star": 99.5, "exp": 2.2, "signoff_weight": 0.15, "opt_weight": 0.85},
     }

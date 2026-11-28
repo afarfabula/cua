@@ -27,7 +27,7 @@ from common import (
     verify_session_cookie,
 )
 
-app = FastAPI(title="Rack & Fabric Console", version="0.6.1")
+app = FastAPI(title="Rack & Fabric Console", version="0.6.3")
 
 LOGIN_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>Login - Rack &amp; Fabric Console</title>
@@ -85,10 +85,8 @@ def _sanitize_sim_for_client(raw: dict, runs_used: int, run_id: int, created_at:
             "effective_utility": round(info["utility"], 3),
         }
     advisories = []
-    if bleed_total > 0:
-        advisories.append("Thermal bleed signature detected on rack elevation — inspect /api/simulations/heatmap.png")
-    if io_any:
-        advisories.append("Shared storage/NVMe queue saturation detected — inspect IO heatmap lane")
+    if bleed_total > 0 or io_any:
+        advisories.append("Telemetry anomaly detected — inspect /api/simulations/heatmap.png and per-team effective throughput")
     if not advisories and raw.get("hard_feasible") and raw.get("u_total", 0.0) >= 99.0:
         advisories.append("Cluster telemetry nominal across thermal, fabric, and IO planes")
     return {
@@ -169,8 +167,6 @@ def _trigger_concurrent_bu_claims(conn, run_id: int, ts: str) -> List[dict]:
         key = (r["rack"], int(r["bay"]))
         occ[key] = occ.get(key, 0) | _shift_mask(r["shift"])
 
-    spine_b_bays = sum(1 for r in rows if r["rack"] in {"R4", "R5"})
-    night_only_bays = sum(1 for r in rows if r["shift"] == "NIGHT_ONLY")
     claimed = []
 
     def try_claim(rack: str, bay: int, shift: str, team: str) -> bool:
@@ -189,19 +185,46 @@ def _trigger_concurrent_bu_claims(conn, run_id: int, ts: str) -> List[dict]:
         claimed.append({"rack": rack, "bay": bay, "shift": shift, "team": team})
         return True
 
-    if run_id == 1 and spine_b_bays < 4:
-        for rack, bay in [("R5", 3), ("R5", 1), ("R4", 3), ("R4", 1)]:
-            if try_claim(rack, bay, "24H", "SHARED-AUTO-BU-MED"):
-                break
-    elif run_id == 2 and night_only_bays == 0:
-        for rack, bay in [("R3", 1), ("R3", 3), ("R5", 1), ("R5", 3)]:
-            if len(claimed) >= 2:
-                break
-            try_claim(rack, bay, "NIGHT_ONLY", "SHARED-AUTO-BU-MED")
-    elif run_id == 3 and spine_b_bays < 4:
-        for rack, bay in [("R4", 1), ("R5", 1), ("R4", 2), ("R5", 2)]:
-            if try_claim(rack, bay, "24H", "SHARED-AUTO-BU-HIGH"):
-                break
+    def claim_from(candidates: List[tuple], team: str) -> None:
+        for rack, bay, shift in candidates:
+            if try_claim(rack, bay, shift, team):
+                return
+        for rk in ["R5", "R4", "R3", "R2", "R1"]:
+            for b in [3, 1, 2, 0]:
+                for sh in ["24H", "NIGHT_ONLY", "DAY_ONLY"]:
+                    if try_claim(rk, b, sh, team):
+                        return
+
+    if run_id == 1:
+        claim_from(
+            [
+                ("R5", 3, "24H"), ("R3", 3, "24H"), ("R4", 3, "24H"),
+                ("R5", 1, "24H"), ("R3", 1, "24H"),
+                ("R5", 3, "NIGHT_ONLY"), ("R3", 3, "NIGHT_ONLY"),
+                ("R5", 1, "NIGHT_ONLY"), ("R3", 1, "NIGHT_ONLY"),
+                ("R4", 3, "DAY_ONLY"), ("R5", 3, "DAY_ONLY"),
+            ],
+            "SHARED-AUTO-BU-MED",
+        )
+    elif run_id == 2:
+        claim_from(
+            [
+                ("R5", 1, "NIGHT_ONLY"), ("R3", 1, "NIGHT_ONLY"), ("R3", 3, "NIGHT_ONLY"),
+                ("R4", 1, "NIGHT_ONLY"), ("R4", 3, "NIGHT_ONLY"),
+                ("R5", 1, "DAY_ONLY"), ("R3", 1, "DAY_ONLY"),
+                ("R5", 1, "24H"), ("R3", 1, "24H"),
+            ],
+            "SHARED-AUTO-BU-MED",
+        )
+    elif run_id == 3:
+        claim_from(
+            [
+                ("R4", 1, "24H"), ("R5", 1, "24H"),
+                ("R4", 1, "DAY_ONLY"), ("R5", 1, "DAY_ONLY"),
+                ("R3", 1, "24H"), ("R2", 1, "24H"), ("R1", 1, "24H"),
+            ],
+            "SHARED-AUTO-BU-HIGH",
+        )
     return claimed
 
 
@@ -281,13 +304,21 @@ def run_simulation(user: str = Depends(require_auth)):
         )
         run_id = cur.lastrowid
         claimed = _trigger_concurrent_bu_claims(conn, run_id, ts)
+        if claimed:
+            payload = build_sim_payload(conn)
+            state_hash = compute_state_hash(payload)
+            raw = call_sim_engine(payload)
+            conn.execute(
+                "UPDATE simulations SET state_hash=?, status=?, hard_feasible=?, monthly_cost_usd=?, u_total=?, raw_json=? WHERE run_id=?",
+                (state_hash, raw["status"], 1 if raw["hard_feasible"] else 0, raw["monthly_cost_usd"], raw["u_total"], json.dumps(raw), run_id),
+            )
         conn.commit()
         used_now = conn.execute("SELECT COUNT(*) FROM simulations").fetchone()[0]
     resp = _sanitize_sim_for_client(raw, used_now, run_id, ts)
     if claimed:
         slots_desc = ", ".join(f"{c['rack']} Bay {c['bay']} ({c['shift']})" for c in claimed)
         resp["advisories"].append(
-            f"Shared pool event: idle slot(s) {slots_desc} were claimed by concurrent tenant workload; reload /api/allocations and re-verify before sign-off."
+            f"Shared pool event: idle slot(s) {slots_desc} were claimed by concurrent tenant workload; telemetry reflects updated cluster state."
         )
     return resp
 
@@ -382,6 +413,12 @@ def get_heatmap_png(user: str = Depends(require_auth)):
         draw.rectangle([rx + 10, ry + 84, rx + rack_w - 10, ry + 98], fill=(127, 29, 29) if io_cont else (20, 83, 45))
         draw.text((rx + 14, ry + 85), "NVMe IO: SATURATED" if io_cont else "NVMe IO: NOMINAL", fill=(254, 226, 226) if io_cont else (187, 247, 208))
 
+        # Visual asymmetric ceiling return-air hot-zone hatch on R2 and R4 above Bay 3
+        if rname in {"R2", "R4"}:
+            draw.rectangle([rx + 10, ry + 101, rx + rack_w - 10, ry + 110], fill=(127, 29, 29))
+            for hx in range(rx + 12, rx + rack_w - 12, 12):
+                draw.line([hx, ry + 110, hx + 6, ry + 101], fill=(248, 113, 113), width=2)
+
         # 4 vertical bays: Bay 3 at top down to Bay 0 at bottom
         bay_h = 88
         bay_gap = 12
@@ -389,14 +426,16 @@ def get_heatmap_png(user: str = Depends(require_auth)):
             by = ry + 112 + vis_row * (bay_h + bay_gap)
             entries = slot_lookup.get((rname, b), [])
             bleed = (rname, b) in bleed_map
-            box_outline = (249, 115, 22) if bleed else (51, 65, 85)
-            draw.rectangle([rx + 10, by, rx + rack_w - 10, by + bay_h], fill=(15, 23, 42), outline=box_outline, width=3 if bleed else 1)
+            hot_top_zone = (rname in {"R2", "R4"} and b == 3)
+            box_outline = (249, 115, 22) if bleed else ((185, 28, 28) if hot_top_zone else (51, 65, 85))
+            draw.rectangle([rx + 10, by, rx + rack_w - 10, by + bay_h], fill=(15, 23, 42), outline=box_outline, width=3 if bleed else (2 if hot_top_zone else 1))
             draw.text((rx + 16, by + 5), f"Bay {b}", fill=(148, 163, 184))
 
             if bleed:
-                # Visual thermal halo strip
-                draw.rectangle([rx + 12, by + 2, rx + rack_w - 12, by + 18], fill=(154, 52, 18))
-                draw.text((rx + 56, by + 4), "THERMAL BLEED -28%", fill=(254, 215, 170))
+                # Visual thermal halo bar (no text formula spoiler)
+                draw.rectangle([rx + 12, by + 2, rx + rack_w - 12, by + 16], fill=(194, 65, 12))
+                for hx in range(rx + 16, rx + rack_w - 16, 14):
+                    draw.rectangle([hx, by + 5, hx + 6, by + 13], fill=(253, 186, 116))
 
             if not entries:
                 draw.text((rx + 56, by + 42), "[ IDLE 4xH100 ]", fill=(71, 85, 105))
