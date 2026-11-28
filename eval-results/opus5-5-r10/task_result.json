@@ -1,0 +1,28 @@
+{
+  "turn": {
+    "opus": 10,
+    "qwen": 9
+  },
+  "jobs": {
+    "opus": [
+      {
+        "name": "第1次执行",
+        "jobName": "r10-cc-opus5-5-1",
+        "finalReward": 1.0,
+        "kindScores": {},
+        "kindCriteriaCounts": {},
+        "criteriaTotal": 0
+      }
+    ],
+    "qwen": [
+      {
+        "name": "第1次执行",
+        "jobName": "r9-cc-qwen4-1",
+        "finalReward": 0.2975,
+        "kindScores": {},
+        "kindCriteriaCounts": {},
+        "criteriaTotal": 0
+      }
+    ]
+  }
+}
