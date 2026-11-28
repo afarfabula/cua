@@ -1,4 +1,4 @@
-# Verifier Checkpoints (`infra-capacity/gpu-cluster-rebalance` v0.6.3)
+# Verifier Checkpoints (`infra-capacity/gpu-cluster-rebalance` v0.6.4)
 
 | ID | 名称 | 数据来源 | 判定规则 | 对总分影响 |
 |---|---|---|---|---|

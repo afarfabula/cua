@@ -21,7 +21,7 @@ from common import (
     verify_session_cookie,
 )
 
-app = FastAPI(title="Team Demand & Negotiation Desk", version="0.6.3")
+app = FastAPI(title="Team Demand & Negotiation Desk", version="0.6.4")
 
 LOGIN_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>Login - Team Negotiation Desk</title>

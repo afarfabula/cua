@@ -1,6 +1,6 @@
 {
   "task_id": "infra-capacity/gpu-cluster-rebalance",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "subjective_items": "无主观项",
   "formula": "Reward = G_hard * (0.15 * S_signoff + 0.85 * clip((U_total - 78.0) / (99.5 - 78.0), 0.0, 1.0) ** 2.2)",
   "hard_gates": [

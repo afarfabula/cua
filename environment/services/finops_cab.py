@@ -18,7 +18,7 @@ from common import (
     verify_session_cookie,
 )
 
-app = FastAPI(title="FinOps & Change Release Portal", version="0.6.3")
+app = FastAPI(title="FinOps & Change Release Portal", version="0.6.4")
 
 LOGIN_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>Login - FinOps &amp; Release Portal</title>

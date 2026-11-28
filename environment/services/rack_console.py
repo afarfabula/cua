@@ -27,7 +27,7 @@ from common import (
     verify_session_cookie,
 )
 
-app = FastAPI(title="Rack & Fabric Console", version="0.6.3")
+app = FastAPI(title="Rack & Fabric Console", version="0.6.4")
 
 LOGIN_HTML = """<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>Login - Rack &amp; Fabric Console</title>

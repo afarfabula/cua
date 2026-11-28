@@ -103,7 +103,7 @@ def seed_database(
 
     truth = {
         "task_id": "infra-capacity/gpu-cluster-rebalance",
-        "task_version": "0.6.3",
+        "task_version": "0.6.4",
         "protected_rack": "R0",
         "protected_team": "PROD-ONLINE-INFERENCE",
         "valid_teams": ["T1", "T2", "T3", "T4", "T5", "T6"],
