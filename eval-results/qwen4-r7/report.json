@@ -1,0 +1,36 @@
+{
+  "task_id": "infra-capacity/gpu-cluster-rebalance",
+  "task_version": "0.6.3",
+  "reward": 0.3481,
+  "gates": {
+    "g_hard": 1.0,
+    "r0_intact": true,
+    "auto_bu_intact": true,
+    "auto_bu_claims_count": 3,
+    "quota_ok": true,
+    "sim_runs_used": 4,
+    "power_ok": true,
+    "budget_ok": true,
+    "committed": true,
+    "live_matches_commit": true,
+    "decoy_ok": true,
+    "local_ok": true,
+    "local_errors": []
+  },
+  "scores": {
+    "s_signoff": 1.0,
+    "valid_signoff_teams": [
+      "T1",
+      "T2",
+      "T3",
+      "T4",
+      "T5",
+      "T6"
+    ],
+    "u_raw": 87.8784,
+    "cost_eff": 100.0,
+    "u_total": 89.0906,
+    "monthly_cost_usd": 113200.0,
+    "s_opt": 0.2331
+  }
+}

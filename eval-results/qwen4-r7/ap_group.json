@@ -1,0 +1,9 @@
+{
+  "round": "r7",
+  "groups": {
+    "qwen4": {
+      "model": "qwen4-max",
+      "group_id": "group-6ac939e857474a4891c2e56689cb2347-p8"
+    }
+  }
+}

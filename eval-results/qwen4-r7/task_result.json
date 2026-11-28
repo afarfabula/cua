@@ -1,0 +1,17 @@
+{
+  "turn": {
+    "qwen": 7
+  },
+  "jobs": {
+    "qwen": [
+      {
+        "name": "第1次执行",
+        "jobName": "r7-cc-qwen4-1",
+        "finalReward": 0.3481,
+        "kindScores": {},
+        "kindCriteriaCounts": {},
+        "criteriaTotal": 0
+      }
+    ]
+  }
+}
